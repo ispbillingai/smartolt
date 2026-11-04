@@ -147,7 +147,7 @@ include __DIR__ . '/backend/templates/sidebar.php';
                     <?php endif; ?>
                     <?php foreach ($olts as $o): ?>
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                            <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="olt.php?id=<?php echo (int)$o['id']; ?>"><?php echo e($o['name']); ?></a><div class="text-xs text-slate-400 font-mono"><?php echo e($o['host'] . ':' . $o['telnet_port']); ?></div></td>
+                            <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="olt.php?id=<?php echo (int)$o['id']; ?>"><?php echo e($o['name']); ?></a><div class="text-xs text-slate-400 font-mono"><?php echo e(olt_address($o)); ?></div></td>
                             <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo $o['model'] !== '' ? e($o['model']) : '<span class="text-slate-400">Not read yet</span>'; ?></td>
                             <td class="<?php echo UI_TD; ?>"><a class="text-brand-600 dark:text-brand-400" href="onus.php?olt=<?php echo (int)$o['id']; ?>"><b><?php echo (int)$o['onu_online']; ?></b> online of <?php echo (int)$o['onu_count']; ?></a></td>
                             <td class="<?php echo UI_TD; ?>"><?php echo $o['status'] === 'online' ? badge('Connected', 'emerald') : ($o['status'] === 'error' ? badge('Cannot connect', 'rose') : badge('Not read yet', 'slate')); ?></td>

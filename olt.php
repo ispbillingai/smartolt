@@ -17,6 +17,8 @@ foreach ($ports as $p) {
     $perBoard[(int)$p['slot']]['total'] = ($perBoard[(int)$p['slot']]['total'] ?? 0) + (int)$p['total'];
     $perBoard[(int)$p['slot']]['online'] = ($perBoard[(int)$p['slot']]['online'] ?? 0) + (int)$p['online'];
 }
+$vpn = $olt['conn_type'] === 'vpn' ? $mgr->vpnStatus($row) : null;
+$script = $vpn !== null ? $mgr->mikrotikScript($row) : '';
 $speedOf = [];
 foreach ($olt['traffic'] as $idx => $t) $speedOf[] = ['idx' => $idx, 'kbps' => $t['cir']];
 
@@ -26,9 +28,33 @@ include __DIR__ . '/backend/templates/sidebar.php';
 ?>
 <div class="flex-1 pt-20 sm:pt-16 ml-0 md:ml-64 min-h-screen flex flex-col">
     <main class="p-4 md:p-8 flex-1">
-        <?php echo page_heading($olt['name'], trim(($olt['model'] ?: 'Not read yet') . ' · ' . $olt['version'] . ' · ' . $olt['host'] . ':' . $olt['telnet_port'], ' ·'),
+        <?php echo page_heading($olt['name'], trim(($olt['model'] ?: 'Not read yet') . ' · ' . $olt['version'] . ' · ' . olt_address($olt), ' ·'),
             '<div class="flex gap-2"><a href="unconfigured.php?olt=' . $id . '" class="' . UI_BTN_GREEN . '">Unconfigured</a><a href="olts.php?edit=' . $id . '" class="' . UI_BTN_GHOST . '">Edit</a></div>'); ?>
         <?php echo flash_messages(); ?>
+        <?php if ($vpn !== null): ?>
+        <?php echo panel_open('SmartOLT VPN', $vpn['connected']
+            ? badge('Connected', 'emerald') . ' <span class="text-xs text-slate-500 dark:text-slate-400">from ' . e($vpn['from']) . ', since ' . e($vpn['since']) . '</span>'
+            : badge('Waiting for your MikroTik', 'amber')); ?>
+            <?php if (!empty($vpn['error'])): ?><p class="mb-3 text-sm text-rose-600 dark:text-rose-400"><?php echo e($vpn['error']); ?></p><?php endif; ?>
+            <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">Paste this into the terminal of the MikroTik your OLT is connected to (Winbox: New Terminal). It connects that router to SmartOLT by VPN and lets SmartOLT reach the OLT at <span class="font-mono"><?php echo e($olt['lan_ip'] . ':' . $olt['lan_port']); ?></span> through it, and nothing else. Pasting it again is safe.</p>
+            <div class="relative">
+                <pre id="vpnScript" class="text-xs font-mono whitespace-pre-wrap break-all p-4 rounded-xl bg-slate-900 text-slate-100 border border-slate-700"><?php echo e($script); ?></pre>
+                <button type="button" id="copyScript" class="absolute top-2 right-2 <?php echo UI_BTN_GHOST; ?>">Copy</button>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2 items-center text-sm">
+                <a href="olt.php?id=<?php echo $id; ?>" class="<?php echo UI_BTN_GHOST; ?>">Check Again</a>
+                <?php if ($vpn['connected']): ?>
+                <form method="POST" action="olts.php" class="inline" data-busy="Reading the OLT through the VPN...">
+                    <?php echo csrf_field(); ?><input type="hidden" name="do" value="refresh"><input type="hidden" name="id" value="<?php echo $id; ?>">
+                    <button class="<?php echo UI_BTN_PRIMARY; ?>">Read the OLT now</button>
+                </form>
+                <?php else: ?>
+                <span class="text-slate-500 dark:text-slate-400">The router shows <b>smartolt-olt<?php echo $id; ?></b> as running under Interfaces once it is connected. If it does not, check the router can reach the internet on TCP port 1194.</span>
+                <?php endif; ?>
+            </div>
+        <?php echo panel_close(); ?>
+        <?php endif; ?>
+
         <?php if ($olt['status'] === 'error'): ?>
             <div class="mb-4 p-3 border rounded-lg text-sm bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300">Last read failed: <?php echo e($olt['last_error']); ?></div>
         <?php endif; ?>
@@ -104,6 +130,14 @@ include __DIR__ . '/backend/templates/sidebar.php';
     <?php include __DIR__ . '/backend/templates/footer.php'; ?>
 <script>
 (function () {
+    var copy = document.getElementById('copyScript');
+    if (copy) copy.addEventListener('click', function () {
+        var text = document.getElementById('vpnScript').textContent;
+        (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () {
+            copy.textContent = 'Copied';
+            setTimeout(function () { copy.textContent = 'Copy'; }, 1500);
+        }, function () { window.getSelection().selectAllChildren(document.getElementById('vpnScript')); });
+    });
     var el = document.getElementById('oltNet');
     if (!el) return;
     var pts = <?php echo json_encode(array_map(function ($r) { return ['t' => date('H:i', $r['t']), 'on' => $r['online'], 'off' => $r['offline']]; }, $net)); ?>;

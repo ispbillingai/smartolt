@@ -171,7 +171,7 @@ cat > "$CONF_FILE" <<EOF
     </Directory>
 
     # Only the pages are public: never the code behind them, the tests, the repo or setup files
-    <LocationMatch "^/(backend|tests)(/|$)|/\.git|\.(sql|sh|md|log)$">
+    <LocationMatch "^/(backend|tests|vpn)(/|$)|/\.git|\.(sql|sh|md|log)$">
         Require all denied
     </LocationMatch>
 

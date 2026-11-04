@@ -96,6 +96,12 @@ function fmt_distance($m): string
     return (int)$m >= 1000 ? number_format((int)$m / 1000, 2) . ' km' : (int)$m . ' m';
 }
 
+/** How the OLT is reached, for lists: "VPN to 192.168.100.1" or "41.90.1.2:23". */
+function olt_address(array $o): string
+{
+    return ($o['conn_type'] ?? 'direct') === 'vpn' ? 'VPN to ' . $o['lan_ip'] : $o['host'] . ':' . $o['telnet_port'];
+}
+
 /** "5 min ago", "3 h ago", "2 days ago" for a stored time. */
 function ago(?string $at): string
 {

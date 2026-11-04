@@ -5,7 +5,7 @@
 
 class Schema
 {
-    const VERSION = 2;
+    const VERSION = 3;
 
     public static function ensure(PDO $db): void
     {
@@ -182,5 +182,23 @@ class Schema
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
         self::addColumn($db, 'olts', 'traffic_json', 'mediumtext');
+    }
+
+    /**
+     * OLTs reached through the SmartOLT VPN: the ISP's MikroTik dials this box and forwards
+     * <vpn_ip>:2323 to the OLT's own address (lan_ip:lan_port), so host/telnet_port become the tunnel.
+     */
+    private static function v3(PDO $db): void
+    {
+        foreach ([
+            'conn_type'    => "varchar(10) NOT NULL DEFAULT 'direct'",
+            'vpn_user'     => "varchar(64) NOT NULL DEFAULT ''",
+            'vpn_pass_enc' => 'text',
+            'vpn_ip'       => "varchar(15) NOT NULL DEFAULT ''",
+            'lan_ip'       => "varchar(45) NOT NULL DEFAULT ''",
+            'lan_port'     => 'smallint unsigned NOT NULL DEFAULT 23',
+        ] as $col => $def) {
+            self::addColumn($db, 'olts', $col, $def);
+        }
     }
 }

@@ -1,0 +1,65 @@
+#!/bin/bash
+# The only root command the SmartOLT sites may run (sudoers: www-data, this file only).
+#   smartolt-vpn add <username> <sha256 of password>   create or update a login, print its fixed IP
+#   smartolt-vpn remove <username>                     delete a login and drop its tunnel
+#   smartolt-vpn status <username>                     "connected <real address> <since>" or "offline"
+# Usernames are "<site subdomain>-olt<id>". Fixed IPs come from 17.0.1.1 upwards (17.0.0.1 is the server).
+
+set -u
+DIR=/etc/openvpn/server
+USERS="$DIR/smartolt-users"
+CCD="$DIR/ccd"
+STATUS=/var/log/openvpn/smartolt-status.log
+
+user="${2:-}"
+[[ "$user" =~ ^[a-z0-9][a-z0-9-]{2,60}$ ]] || { echo "bad username" >&2; exit 2; }
+
+exec 9>/run/smartolt-vpn.lock
+flock -w 20 9 || { echo "busy" >&2; exit 3; }
+
+case "${1:-}" in
+    add)
+        hash="${3:-}"
+        [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || { echo "bad password hash" >&2; exit 2; }
+        if [ ! -f "$CCD/$user" ]; then
+            used=$(cat "$CCD"/* 2>/dev/null | awk '/^ifconfig-push/ { print $2 }')
+            ip=""
+            for a in $(seq 1 255); do
+                for b in $(seq 1 254); do
+                    if ! grep -qx "17.0.$a.$b" <<< "$used"; then ip="17.0.$a.$b"; break 2; fi
+                done
+            done
+            [ -n "$ip" ] || { echo "no free tunnel IP" >&2; exit 4; }
+            echo "ifconfig-push $ip 255.255.0.0" > "$CCD/$user"
+        fi
+        tmp=$(mktemp "$DIR/.users.XXXXXX")
+        awk -v u="$user" '$1 != u' "$USERS" > "$tmp"
+        echo "$user $hash" >> "$tmp"
+        chmod 600 "$tmp"
+        mv "$tmp" "$USERS"
+        awk '/^ifconfig-push/ { print $2 }' "$CCD/$user"
+        ;;
+    remove)
+        tmp=$(mktemp "$DIR/.users.XXXXXX")
+        awk -v u="$user" '$1 != u' "$USERS" > "$tmp"
+        chmod 600 "$tmp"
+        mv "$tmp" "$USERS"
+        rm -f "$CCD/$user"
+        # drop a tunnel that is up right now, not only the next login
+        [ -S /run/smartolt-vpn-mgmt.sock ] && printf 'kill %s\nquit\n' "$user" | timeout 3 nc -U /run/smartolt-vpn-mgmt.sock >/dev/null 2>&1
+        echo removed
+        ;;
+    status)
+        # status-version 2: CLIENT_LIST,<name>,<real addr>,<virtual addr>,...,<connected since>,...
+        line=$(grep "^CLIENT_LIST,$user," "$STATUS" 2>/dev/null | head -1)
+        if [ -n "$line" ]; then
+            echo "connected $(cut -d, -f3 <<< "$line" | cut -d: -f1) $(cut -d, -f8 <<< "$line")"
+        else
+            echo offline
+        fi
+        ;;
+    *)
+        echo "usage: smartolt-vpn add|remove|status <username> [hash]" >&2
+        exit 2
+        ;;
+esac

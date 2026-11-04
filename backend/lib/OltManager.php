@@ -95,7 +95,7 @@ class OltManager
     /** An OLT row without its password, with boards and profiles decoded. */
     public static function publicOlt(array $o): array
     {
-        unset($o['password_enc']);
+        unset($o['password_enc'], $o['vpn_pass_enc']);
         $o['boards'] = json_decode((string)$o['boards_json'], true) ?: [];
         $o['profiles'] = json_decode((string)$o['profiles_json'], true) ?: ['line' => [], 'srv' => [], 'vlans' => []];
         $o['traffic'] = json_decode((string)($o['traffic_json'] ?? ''), true) ?: [];
@@ -191,39 +191,164 @@ class OltManager
 
     // ----- Saving an OLT -----
 
-    /** Validate and save. Returns the OLT id or throws InvalidArgumentException with a message for the user. */
+    /**
+     * Validate and save. Returns the OLT id or throws InvalidArgumentException with a message for the user.
+     * conn_type 'direct': host and telnet_port reach the OLT from the internet. conn_type 'vpn': the OLT
+     * sits at lan_ip:lan_port behind the ISP's MikroTik, which dials the SmartOLT VPN; host and port
+     * become the router's tunnel IP and VPN_NAT_PORT.
+     */
     public function saveOlt(array $in): int
     {
         $name = trim((string)($in['name'] ?? ''));
+        $vpn = ($in['conn_type'] ?? 'direct') === 'vpn';
         $host = trim((string)($in['host'] ?? ''));
         $port = (int)($in['telnet_port'] ?? 23);
+        $lanIp = trim((string)($in['lan_ip'] ?? ''));
+        $lanPort = (int)($in['lan_port'] ?? 23);
         $user = trim((string)($in['username'] ?? ''));
         $pass = (string)($in['password'] ?? '');
         if ($name === '' || mb_strlen($name) > 100) throw new InvalidArgumentException('Give the OLT a name.');
-        if (!filter_var($host, FILTER_VALIDATE_IP) && !preg_match('/^(?=.{1,190}$)([a-z0-9-]+\.)+[a-z]{2,}$/i', $host)) throw new InvalidArgumentException('Enter the OLT address as an IP or a host name.');
-        if ($port < 1 || $port > 65535) throw new InvalidArgumentException('The Telnet port must be between 1 and 65535.');
+        if ($vpn) {
+            if (!filter_var($lanIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) throw new InvalidArgumentException('Enter the OLT\'s own IP in your network, for example 192.168.100.1.');
+            if ($lanPort < 1 || $lanPort > 65535) throw new InvalidArgumentException('The Telnet port must be between 1 and 65535.');
+        } else {
+            if (!filter_var($host, FILTER_VALIDATE_IP) && !preg_match('/^(?=.{1,190}$)([a-z0-9-]+\.)+[a-z]{2,}$/i', $host)) throw new InvalidArgumentException('Enter the OLT address as an IP or a host name.');
+            if ($port < 1 || $port > 65535) throw new InvalidArgumentException('The Telnet port must be between 1 and 65535.');
+        }
         if ($user === '') throw new InvalidArgumentException('Enter the OLT username.');
         $now = self::now();
-        if (!empty($in['id'])) {
-            $olt = $this->olt((int)$in['id']);
-            if (!$olt) throw new InvalidArgumentException('OLT not found.');
-            $enc = $pass !== '' ? $this->encrypt($pass) : $olt['password_enc'];
-            $this->db->prepare('UPDATE olts SET name=?, host=?, telnet_port=?, username=?, password_enc=?, updated_at=? WHERE id=?')
-                ->execute([$name, $host, $port, $user, $enc, $now, $olt['id']]);
-            return (int)$olt['id'];
+        $olt = !empty($in['id']) ? $this->olt((int)$in['id']) : null;
+        if (!empty($in['id']) && !$olt) throw new InvalidArgumentException('OLT not found.');
+        if (!$olt && $pass === '') throw new InvalidArgumentException('Enter the OLT password.');
+        $enc = $pass !== '' ? $this->encrypt($pass) : $olt['password_enc'];
+
+        if ($olt) {
+            $id = (int)$olt['id'];
+            $this->db->prepare('UPDATE olts SET name=?, username=?, password_enc=?, updated_at=? WHERE id=?')->execute([$name, $user, $enc, $now, $id]);
+        } else {
+            $this->db->prepare('INSERT INTO olts (name, host, telnet_port, username, password_enc, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+                ->execute([$name, $vpn ? '0.0.0.0' : $host, $vpn ? self::VPN_NAT_PORT : $port, $user, $enc, $now, $now]);
+            $id = (int)$this->db->lastInsertId();
         }
-        if ($pass === '') throw new InvalidArgumentException('Enter the OLT password.');
-        $this->db->prepare('INSERT INTO olts (name, host, telnet_port, username, password_enc, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-            ->execute([$name, $host, $port, $user, $this->encrypt($pass), $now, $now]);
-        return (int)$this->db->lastInsertId();
+
+        if ($vpn) {
+            try {
+                $this->vpnEnsure($id);
+            } catch (Throwable $e) {
+                if (!$olt) $this->db->prepare('DELETE FROM olts WHERE id=?')->execute([$id]);
+                throw new InvalidArgumentException($e->getMessage());
+            }
+            $this->db->prepare("UPDATE olts SET conn_type='vpn', lan_ip=?, lan_port=? WHERE id=?")->execute([$lanIp, $lanPort, $id]);
+        } else {
+            if ($olt && $olt['conn_type'] === 'vpn') $this->vpnRemove($olt);
+            $this->db->prepare("UPDATE olts SET conn_type='direct', host=?, telnet_port=?, vpn_user='', vpn_pass_enc=NULL, vpn_ip='', lan_ip='' WHERE id=?")
+                ->execute([$host, $port, $id]);
+        }
+        return $id;
     }
 
     public function deleteOlt(int $id): void
     {
         $olt = $this->olt($id);
         if (!$olt) throw new InvalidArgumentException('OLT not found.');
+        if ($olt['conn_type'] === 'vpn') {
+            try { $this->vpnRemove($olt); } catch (Throwable $e) { /* the login goes with the OLT either way */ }
+        }
         $this->db->prepare('DELETE FROM olts WHERE id=?')->execute([$id]);
         $this->log(null, 'olt.delete', $olt['name'], true, 'removed from SmartOLT, nothing changed on the OLT');
+    }
+
+    // ----- SmartOLT VPN -----
+
+    // On the router, this port on the tunnel IP is forwarded to the OLT's Telnet port.
+    const VPN_NAT_PORT = 2323;
+    const VPN_HELPER = '/usr/local/sbin/smartolt-vpn';
+
+    /** Run the root helper (vpn/smartolt-vpn) through sudo. Returns its output or throws. */
+    private function vpnHelper(array $args): string
+    {
+        if (!is_file(self::VPN_HELPER)) {
+            throw new RuntimeException('The SmartOLT VPN is not set up on this server yet.');
+        }
+        exec('sudo -n ' . self::VPN_HELPER . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $rc);
+        if ($rc !== 0) {
+            throw new RuntimeException('The SmartOLT VPN did not accept the change: ' . trim(implode(' ', $out)));
+        }
+        return trim(implode("\n", $out));
+    }
+
+    public function vpnUsername(int $oltId): string
+    {
+        return strtolower($this->config->getSubdomain()) . '-olt' . $oltId;
+    }
+
+    /** Make sure this OLT has its VPN login and fixed tunnel IP; keeps an existing password. */
+    public function vpnEnsure(int $id): array
+    {
+        $olt = $this->olt($id);
+        $pass = $olt['vpn_pass_enc'] ? $this->decrypt($olt['vpn_pass_enc']) : bin2hex(random_bytes(10));
+        $user = $this->vpnUsername($id);
+        $ip = $this->vpnHelper(['add', $user, hash('sha256', $pass)]);
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) throw new RuntimeException('The SmartOLT VPN gave no tunnel IP.');
+        $this->db->prepare('UPDATE olts SET vpn_user=?, vpn_pass_enc=?, vpn_ip=?, host=?, telnet_port=? WHERE id=?')
+            ->execute([$user, $this->encrypt($pass), $ip, $ip, self::VPN_NAT_PORT, $id]);
+        return ['user' => $user, 'ip' => $ip];
+    }
+
+    private function vpnRemove(array $olt): void
+    {
+        if ($olt['vpn_user'] !== '') $this->vpnHelper(['remove', $olt['vpn_user']]);
+    }
+
+    /** ['connected' => bool, 'from' => router's public IP, 'since' => time] for a VPN OLT. */
+    public function vpnStatus(array $olt): array
+    {
+        if ($olt['conn_type'] !== 'vpn' || $olt['vpn_user'] === '') return ['connected' => false, 'from' => '', 'since' => ''];
+        try {
+            $s = explode(' ', $this->vpnHelper(['status', $olt['vpn_user']]), 3);
+        } catch (Throwable $e) {
+            return ['connected' => false, 'from' => '', 'since' => '', 'error' => $e->getMessage()];
+        }
+        return ['connected' => $s[0] === 'connected', 'from' => $s[1] ?? '', 'since' => $s[2] ?? ''];
+    }
+
+    /** The VPN server routers dial: this site's own host name, which points at the SmartOLT box. */
+    public function vpnServer(): string
+    {
+        return (string)(parse_url($this->config->getAppUrl(), PHP_URL_HOST) ?: '');
+    }
+
+    /**
+     * RouterOS commands that connect the ISP's MikroTik to the SmartOLT VPN and forward the OLT's
+     * Telnet. One block, safe to paste again: it replaces what an earlier paste made.
+     */
+    public function mikrotikScript(array $olt): string
+    {
+        if ($olt['conn_type'] !== 'vpn' || !$olt['vpn_pass_enc']) return '';
+        $if = 'smartolt-olt' . (int)$olt['id'];
+        $pass = $this->decrypt($olt['vpn_pass_enc']);
+        $common = 'name=' . $if . ' connect-to=' . $this->vpnServer() . ' port=1194 user=' . $olt['vpn_user'] . ' password=' . $pass
+            . ' auth=sha1 add-default-route=no comment="SmartOLT ' . $this->scriptSafe($olt['name']) . '"';
+        $lan = $olt['lan_ip'];
+        $lp = (int)$olt['lan_port'];
+        $tag = 'comment="' . $if . '"';
+        return implode("\n", [
+            '{',
+            ':local v [:pick [/system resource get version] 0 1]',
+            '/interface ovpn-client remove [find name="' . $if . '"]',
+            ':if ($v = "7") do={ /interface ovpn-client add ' . $common . ' cipher=aes256-cbc route-nopull=yes } else={ /interface ovpn-client add ' . $common . ' cipher=aes256 }',
+            '/ip firewall nat remove [find ' . $tag . ']',
+            '/ip firewall nat add chain=dstnat in-interface=' . $if . ' protocol=tcp dst-port=' . self::VPN_NAT_PORT . ' action=dst-nat to-addresses=' . $lan . ' to-ports=' . $lp . ' ' . $tag,
+            '/ip firewall nat add chain=srcnat dst-address=' . $lan . ' protocol=tcp dst-port=' . $lp . ' action=masquerade ' . $tag,
+            '/ip firewall filter remove [find ' . $tag . ']',
+            ':if ([:len [/ip firewall filter find]] > 0) do={ /ip firewall filter add chain=forward in-interface=' . $if . ' dst-address=' . $lan . ' protocol=tcp dst-port=' . $lp . ' action=accept ' . $tag . ' place-before=0 } else={ /ip firewall filter add chain=forward in-interface=' . $if . ' dst-address=' . $lan . ' protocol=tcp dst-port=' . $lp . ' action=accept ' . $tag . ' }',
+            '}',
+        ]);
+    }
+
+    private function scriptSafe(string $s): string
+    {
+        return preg_replace('/[^A-Za-z0-9 _.-]/', '', $s);
     }
 
     // ----- Talking to the OLT -----
@@ -240,6 +365,9 @@ class OltManager
         }
         $s = null;
         try {
+            if (($olt['conn_type'] ?? 'direct') === 'vpn' && !$this->vpnStatus($olt)['connected']) {
+                throw new OltError('Your MikroTik is not connected to the SmartOLT VPN yet. Paste the commands shown on this OLT\'s page into its terminal, then try again.');
+            }
             $s = Huawei::connect($olt['host'], (int)$olt['telnet_port'], $olt['username'], $this->decrypt($olt['password_enc']));
             return $fn($s);
         } finally {

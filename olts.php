@@ -7,6 +7,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($do === 'save') {
             $id = $mgr->saveOlt($_POST);
+            $saved = $mgr->olt($id);
+            if ($saved['conn_type'] === 'vpn' && !$mgr->vpnStatus($saved)['connected']) {
+                // Nothing to read until the router dials in; its page has the commands for it.
+                back("olt.php?id={$id}", 'success', 'OLT saved. Now connect your MikroTik to the SmartOLT VPN with the commands below.');
+            }
             // Read it straight away so the ISP sees at once whether the login works.
             $s = $mgr->refresh($mgr->olt($id));
             $mgr->log($id, 'olt.refresh', $_POST['name'] ?? '', true, 'ok');
@@ -57,13 +62,29 @@ include __DIR__ . '/backend/templates/sidebar.php';
                     <label class="<?php echo UI_LABEL; ?>">Name</label>
                     <input class="<?php echo UI_INPUT; ?>" name="name" required maxlength="100" placeholder="For example Main OLT" value="<?php echo e($editing['name'] ?? ''); ?>">
                 </div>
+                <?php $isVpn = ($editing['conn_type'] ?? 'vpn') === 'vpn'; ?>
                 <div>
-                    <label class="<?php echo UI_LABEL; ?>">IP or Host Name</label>
-                    <input class="<?php echo UI_INPUT; ?>" name="host" required maxlength="190" placeholder="Public IP of the OLT or of your router" value="<?php echo e($editing['host'] ?? ''); ?>">
+                    <label class="<?php echo UI_LABEL; ?>">How SmartOLT reaches the OLT</label>
+                    <select name="conn_type" id="connType" class="<?php echo UI_INPUT; ?>">
+                        <option value="vpn" <?php echo $isVpn ? 'selected' : ''; ?>>Through the SmartOLT VPN (no public IP needed)</option>
+                        <option value="direct" <?php echo $isVpn ? '' : 'selected'; ?>>Directly, on a public IP or port forward</option>
+                    </select>
                 </div>
-                <div>
+                <div class="conn-vpn">
+                    <label class="<?php echo UI_LABEL; ?>">OLT IP in your network</label>
+                    <input class="<?php echo UI_INPUT; ?>" name="lan_ip" maxlength="45" placeholder="For example 192.168.100.1" value="<?php echo e($editing['lan_ip'] ?? ''); ?>">
+                </div>
+                <div class="conn-vpn">
+                    <label class="<?php echo UI_LABEL; ?>">OLT Telnet Port</label>
+                    <input class="<?php echo UI_INPUT; ?>" name="lan_port" type="number" min="1" max="65535" value="<?php echo (int)($editing['lan_port'] ?? 23); ?>">
+                </div>
+                <div class="conn-direct">
+                    <label class="<?php echo UI_LABEL; ?>">IP or Host Name</label>
+                    <input class="<?php echo UI_INPUT; ?>" name="host" maxlength="190" placeholder="Public IP of the OLT or of your router" value="<?php echo e(($editing['conn_type'] ?? '') === 'direct' ? $editing['host'] : ''); ?>">
+                </div>
+                <div class="conn-direct">
                     <label class="<?php echo UI_LABEL; ?>">Telnet Port</label>
-                    <input class="<?php echo UI_INPUT; ?>" name="telnet_port" type="number" min="1" max="65535" required value="<?php echo (int)($editing['telnet_port'] ?? 23); ?>">
+                    <input class="<?php echo UI_INPUT; ?>" name="telnet_port" type="number" min="1" max="65535" value="<?php echo (int)(($editing['conn_type'] ?? '') === 'direct' ? $editing['telnet_port'] : 23); ?>">
                 </div>
                 <div>
                     <label class="<?php echo UI_LABEL; ?>">Username</label>
@@ -79,10 +100,23 @@ include __DIR__ . '/backend/templates/sidebar.php';
                 </div>
             </form>
             <div class="mt-5 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 space-y-1.5">
-                <p>SmartOLT logs in to your OLT over Telnet, so the OLT must be reachable from the internet. Use its public IP, or forward a port on your MikroTik to the OLT management IP and port 23, then enter your public IP and that port here.</p>
+                <p><b>Through the SmartOLT VPN:</b> enter the OLT's own IP as your MikroTik sees it. After saving you get a few commands to paste into that MikroTik; it then connects to SmartOLT by VPN and SmartOLT reaches the OLT through it. Nothing on the OLT is opened to the internet.</p>
+                <p><b>Directly:</b> the OLT must be reachable from the internet. Use its public IP, or forward a port on your MikroTik to the OLT management IP and port 23, then enter your public IP and that port.</p>
                 <p>Supported now: Huawei MA5683T, MA5608T and MA5680T. Use an OLT user that is allowed to configure ONUs. The password is stored encrypted.</p>
             </div>
         <?php echo panel_close(); ?>
+        <script>
+        (function () {
+            var sel = document.getElementById('connType');
+            function show() {
+                var vpn = sel.value === 'vpn';
+                document.querySelectorAll('.conn-vpn').forEach(function (el) { el.classList.toggle('hidden', !vpn); el.querySelector('input').required = vpn && el.querySelector('input').name === 'lan_ip'; });
+                document.querySelectorAll('.conn-direct').forEach(function (el) { el.classList.toggle('hidden', vpn); el.querySelector('input').required = !vpn; });
+            }
+            sel.addEventListener('change', show);
+            show();
+        })();
+        </script>
         <?php endif; ?>
 
         <?php if ($olts): ?>
@@ -100,7 +134,7 @@ include __DIR__ . '/backend/templates/sidebar.php';
                     <?php foreach ($olts as $o): $p = OltManager::publicOlt($o); ?>
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition align-top">
                             <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="olt.php?id=<?php echo (int)$o['id']; ?>"><?php echo e($o['name']); ?></a>
-                                <div class="text-xs text-slate-400 font-mono"><?php echo e($o['host'] . ':' . $o['telnet_port']); ?></div></td>
+                                <div class="text-xs text-slate-400 font-mono"><?php echo e(olt_address($o)); ?></div></td>
                             <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo $o['model'] !== '' ? e($o['model']) . '<div class="text-xs text-slate-400">' . e($o['version']) . '</div>' : '<span class="text-slate-400">Not read yet</span>'; ?></td>
                             <td class="<?php echo UI_TD; ?> text-xs text-slate-600 dark:text-slate-300">
                                 <?php foreach ($p['boards'] as $b): ?>

@@ -65,6 +65,16 @@ try {
         case 'olt.save':
             out(['ok' => true, 'id' => $mgr->saveOlt($in)]);
 
+        case 'olt.vpn':
+            // Everything the billing dashboard needs to set the ISP's MikroTik up for this OLT itself.
+            $olt = $mgr->olt($id);
+            if (!$olt) fail('OLT not found.', 404);
+            if ($olt['conn_type'] !== 'vpn') fail('This OLT is reached directly, not through the SmartOLT VPN.', 400);
+            out(['ok' => true, 'status' => $mgr->vpnStatus($olt), 'server' => $mgr->vpnServer(), 'port' => 1194,
+                'interface' => 'smartolt-olt' . (int)$olt['id'], 'user' => $olt['vpn_user'], 'password' => $mgr->decrypt($olt['vpn_pass_enc']),
+                'tunnel_ip' => $olt['vpn_ip'], 'lan_ip' => $olt['lan_ip'], 'lan_port' => (int)$olt['lan_port'], 'nat_port' => OltManager::VPN_NAT_PORT,
+                'script' => $mgr->mikrotikScript($olt)]);
+
         case 'olt.delete':
             $mgr->deleteOlt($id);
             out(['ok' => true]);
