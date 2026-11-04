@@ -9,11 +9,13 @@ calls this site's `api.php`; everything that touches an OLT lives here.
 
 | Page | What it does |
 |---|---|
-| `index.php` | Sign in, first sign in password change, then the overview: OLTs, ONUs, online, offline, weak signal, signal chart, busiest PON ports, offline ONUs |
-| `olts.php` | Add, edit, remove an OLT; Refresh reads model, firmware, boards, profiles, VLANs and every ONU |
-| `unconfigured.php` | ONUs the OLT sees but has not authorized; authorize with line and service profile, VLAN, GEM port, bridge or router mode |
-| `onus.php` | Every authorized ONU with status and signal; filter by OLT, status, weak signal, search; reboot, delete |
-| `onu.php` | One ONU read live: light levels, temperature, last down cause, uptime; rename, reboot, delete |
+| `index.php` | Sign in, first sign in password change, then the overview: waiting authorization, online, offline split by power fail, signal loss (LOS) and other, low signal (warning, critical), 24 hour network status, latest changes |
+| `olts.php`, `olt.php` | Add, edit, remove an OLT; the OLT page shows boards, every PON port (online, power fail, LOS, average and weakest signal), profiles, VLANs and speed tables |
+| `unconfigured.php` | ONUs waiting for authorization (from the last 5 minute read, or Search Now); authorize with name, ONU type picked from the model, mode, VLAN, speed, zone, ODB and port, address |
+| `onus.php` | Every authorized ONU: status with the down cause, signal, distance, VLAN, speed, zone and ODB; filter by OLT, PON port, status, zone, ODB, type, speed, VLAN; tick many to reboot, disable, enable or set speed; CSV export |
+| `onu.php` | One ONU read live; signal graph for 7 days, status history; rename, change VLAN, speed or mode on the OLT, disable or enable, replace the ONU (new serial, same settings), reboot, delete; zone, ODB, address and GPS |
+| `map.php` | ONUs and ODBs with a location on a map, coloured by status |
+| `setup.php` | Zones, ODBs (splitter boxes), ONU types and speed profiles. A speed profile becomes an OLT traffic table the first time it is used on that OLT |
 | `logs.php` | Every change, from this panel, from the billing dashboard and from the 5 minute read |
 | `settings.php` | Profile and password |
 | `api.php` | JSON API for the billing dashboard |
@@ -26,7 +28,8 @@ calls this site's `api.php`; everything that touches an OLT lives here.
     backend/config/database.php     written by install.sh, git ignored (databasecopy.php is the example)
     backend/lib/Telnet.php          Telnet client: option refusal, "More" paging, "{ <cr>|... }:" prompts
     backend/lib/Huawei.php          Huawei MA5600T series commands and output parsers
-    backend/lib/OltManager.php      OLT passwords (AES-256-GCM), per OLT lock, activity log, full read, ONU actions
+    backend/lib/OltManager.php      OLT passwords (AES-256-GCM), per OLT lock, activity log, full read, ONU actions, history, bulk actions
+    backend/lib/Schema.php          database upgrades: install.sql is version 1, each later change runs once on the next page load
     backend/templates/              header, sidebar, footer, login and password forms, shared UI pieces
     tests/fake_olt.php              a pretend MA5683T on a TCP port
     tests/api_test.php, web_test.sh end to end tests against the fake OLT

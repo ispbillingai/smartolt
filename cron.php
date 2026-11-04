@@ -19,8 +19,12 @@ foreach ($due as $olt) {
     $t = microtime(true);
     try {
         $s = $mgr->refresh($olt);
-        printf("%s olt %d %s: %d onus, %d online, %d removed, %.1fs\n", OltManager::now(), $olt['id'], $olt['name'], $s['onus'], $s['online'], $s['removed'], microtime(true) - $t);
+        printf("%s olt %d %s: %d onus, %d online, %d waiting, %d removed, %.1fs\n", OltManager::now(), $olt['id'], $olt['name'], $s['onus'], $s['online'], $s['waiting'], $s['removed'], microtime(true) - $t);
     } catch (Throwable $e) {
         printf("%s olt %d %s: FAILED %s\n", OltManager::now(), $olt['id'], $olt['name'], $e->getMessage());
     }
+}
+// Once an hour, drop history older than it is kept.
+if ((int)date('i') < 5) {
+    $mgr->prune();
 }

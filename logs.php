@@ -5,6 +5,8 @@ $labels = [
     'onu.authorize' => 'Authorize ONU', 'onu.reboot' => 'Reboot ONU', 'onu.delete' => 'Delete ONU',
     'onu.describe' => 'Rename ONU', 'onu.status' => 'Read ONU', 'onu.autofind' => 'Search for ONUs',
     'olt.refresh' => 'Read OLT', 'olt.delete' => 'Remove OLT',
+    'onu.service' => 'Change VLAN or speed', 'onu.enable' => 'Enable ONU', 'onu.disable' => 'Disable ONU', 'onu.replace_sn' => 'Replace ONU',
+    'onu.bulk_reboot' => 'Reboot many ONUs', 'onu.bulk_disable' => 'Disable many ONUs', 'onu.bulk_enable' => 'Enable many ONUs', 'onu.bulk_speed' => 'Set speed on many ONUs',
 ];
 $actions = $mgr->actions(300);
 

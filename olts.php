@@ -99,7 +99,7 @@ include __DIR__ . '/backend/templates/sidebar.php';
                     <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
                     <?php foreach ($olts as $o): $p = OltManager::publicOlt($o); ?>
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition align-top">
-                            <td class="<?php echo UI_TD; ?> font-medium text-slate-900 dark:text-slate-100"><?php echo e($o['name']); ?>
+                            <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="olt.php?id=<?php echo (int)$o['id']; ?>"><?php echo e($o['name']); ?></a>
                                 <div class="text-xs text-slate-400 font-mono"><?php echo e($o['host'] . ':' . $o['telnet_port']); ?></div></td>
                             <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo $o['model'] !== '' ? e($o['model']) . '<div class="text-xs text-slate-400">' . e($o['version']) . '</div>' : '<span class="text-slate-400">Not read yet</span>'; ?></td>
                             <td class="<?php echo UI_TD; ?> text-xs text-slate-600 dark:text-slate-300">

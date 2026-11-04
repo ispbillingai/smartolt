@@ -73,33 +73,25 @@ require_once __DIR__ . '/backend/bootstrap.php';
 
 // ----- Overview figures, all from the database copy (the 5 minute read keeps it fresh) -----
 $olts = $mgr->olts();
-$onus = $mgr->listOnus([]);
-$total = count($onus);
-$online = count(array_filter($onus, function ($u) { return $u['run_state'] === 'online'; }));
-$offlineList = array_values(array_filter($onus, function ($u) { return $u['run_state'] !== 'online' && $u['run_state'] !== ''; }));
-$weakList = array_values(array_filter($onus, function ($u) { return $u['rx_power'] !== null && (float)$u['rx_power'] < -27; }));
+$c = $mgr->counts();
+$net = $mgr->networkStatus(24);
+$events = $mgr->recentEvents(12);
+$offlineList = $mgr->listOnus(['status' => 'offline'], 10);
 
 // Signal spread for the chart
-$bands = ['Good (-8 to -25)' => 0, 'Weak (-25 to -27)' => 0, 'Bad (below -27)' => 0, 'No reading' => 0];
-foreach ($onus as $u) {
-    if ($u['rx_power'] === null) { $bands['No reading']++; continue; }
-    $v = (float)$u['rx_power'];
-    if ($v < -27 || $v > -8) $bands['Bad (below -27)']++;
-    elseif ($v < -25) $bands['Weak (-25 to -27)']++;
-    else $bands['Good (-8 to -25)']++;
+$bands = ['Good' => 0, 'Warning' => 0, 'Critical' => 0, 'No reading' => 0];
+foreach ($mgr->listOnus([]) as $u) {
+    $l = signal_level($u['rx_power']);
+    $bands[$l === '' ? 'No reading' : $l]++;
 }
 
-// ONUs per PON port, busiest first
-$perPort = [];
-foreach ($onus as $u) {
-    $k = $u['olt_name'] . ' ' . $u['frame'] . '/' . $u['slot'] . '/' . $u['port'];
-    $perPort[$k] = ($perPort[$k] ?? 0) + 1;
-}
-arsort($perPort);
-$perPort = array_slice($perPort, 0, 8, true);
-
-usort($offlineList, function ($a, $b) { return strcmp($b['updated_at'], $a['updated_at']); });
-$offlineList = array_slice($offlineList, 0, 10);
+// A card that links to the matching list
+$card = function (string $label, $value, string $tone, string $href, string $sub = ''): string {
+    return '<a href="' . e($href) . '" class="block bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft p-5 hover:border-' . $tone . '-400 transition">'
+        . '<p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">' . e($label) . '</p>'
+        . '<h3 class="text-3xl font-bold text-' . $tone . '-600 dark:text-' . $tone . '-400 mt-1">' . e($value) . '</h3>'
+        . ($sub !== '' ? '<p class="text-xs text-slate-500 dark:text-slate-400 mt-2">' . $sub . '</p>' : '') . '</a>';
+};
 
 $pageTitle = 'Dashboard';
 include __DIR__ . '/backend/templates/header.php';
@@ -109,7 +101,7 @@ include __DIR__ . '/backend/templates/sidebar.php';
 <!-- Main Content -->
 <div class="flex-1 pt-20 sm:pt-16 ml-0 md:ml-64 min-h-screen flex flex-col">
     <main class="p-4 md:p-8 flex-1">
-        <?php echo page_heading('Overview', 'Your OLTs, every ONU on them and how strong their signal is.'); ?>
+        <?php echo page_heading('Overview', 'Your OLTs, every ONU on them, why the offline ones are down and how strong their signal is.'); ?>
         <?php echo flash_messages(); ?>
 
         <?php if (!$olts): ?>
@@ -119,26 +111,26 @@ include __DIR__ . '/backend/templates/sidebar.php';
             </div>
         <?php endif; ?>
 
-        <!-- Stats Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <?php
-            echo stat_card('OLTs', count($olts), 'brand', 'M5 12h14M5 12a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v3a2 2 0 01-2 2M5 12a2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2');
-            echo stat_card('Authorized ONUs', $total, 'violet', 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0');
-            echo stat_card('Online', $online, 'emerald', 'M5 13l4 4L19 7');
-            echo stat_card('Offline', $total - $online, 'rose', 'M6 18L18 6M6 6l12 12');
-            echo stat_card('Weak Signal', count($weakList), 'amber', 'M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z');
+            echo $card('Waiting authorization', $c['waiting'], 'teal', 'unconfigured.php', 'New ONUs plugged in');
+            echo $card('Online', $c['online'], 'emerald', 'onus.php?status=online', 'of ' . (int)$c['total'] . ' authorized');
+            echo $card('Total offline', $c['offline'], 'rose', 'onus.php?status=offline',
+                '<b>' . $c['power_fail'] . '</b> power fail · <b>' . $c['los'] . '</b> signal loss · <b>' . ($c['other_off']) . '</b> other' . ($c['disabled'] ? ' · <b>' . $c['disabled'] . '</b> disabled' : ''));
+            echo $card('Low signal', $c['warning'] + $c['critical'], 'amber', 'onus.php?status=weak',
+                '<b>' . $c['warning'] . '</b> warning · <b>' . $c['critical'] . '</b> critical');
             ?>
         </div>
 
-        <!-- Charts Section -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="lg:col-span-2 bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft p-6">
+                <h3 class="text-base font-semibold text-slate-800 dark:text-slate-100 mb-4">Network Status, last 24 hours</h3>
+                <?php if (count($net) < 2): ?><p class="py-10 text-center text-sm text-slate-400">The graph fills in as your OLTs are read every 5 minutes.</p>
+                <?php else: ?><canvas id="netChart" height="120"></canvas><?php endif; ?>
+            </div>
             <div class="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft p-6">
                 <h3 class="text-base font-semibold text-slate-800 dark:text-slate-100 mb-4">Signal Levels</h3>
                 <canvas id="signalChart" height="200"></canvas>
-            </div>
-            <div class="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft p-6">
-                <h3 class="text-base font-semibold text-slate-800 dark:text-slate-100 mb-4">Busiest PON Ports</h3>
-                <canvas id="portChart" height="200"></canvas>
             </div>
         </div>
 
@@ -155,11 +147,11 @@ include __DIR__ . '/backend/templates/sidebar.php';
                     <?php endif; ?>
                     <?php foreach ($olts as $o): ?>
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                            <td class="<?php echo UI_TD; ?> font-medium text-slate-900 dark:text-slate-100"><?php echo e($o['name']); ?><div class="text-xs text-slate-400 font-mono"><?php echo e($o['host'] . ':' . $o['telnet_port']); ?></div></td>
+                            <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="olt.php?id=<?php echo (int)$o['id']; ?>"><?php echo e($o['name']); ?></a><div class="text-xs text-slate-400 font-mono"><?php echo e($o['host'] . ':' . $o['telnet_port']); ?></div></td>
                             <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo $o['model'] !== '' ? e($o['model']) : '<span class="text-slate-400">Not read yet</span>'; ?></td>
                             <td class="<?php echo UI_TD; ?>"><a class="text-brand-600 dark:text-brand-400" href="onus.php?olt=<?php echo (int)$o['id']; ?>"><b><?php echo (int)$o['onu_online']; ?></b> online of <?php echo (int)$o['onu_count']; ?></a></td>
                             <td class="<?php echo UI_TD; ?>"><?php echo $o['status'] === 'online' ? badge('Connected', 'emerald') : ($o['status'] === 'error' ? badge('Cannot connect', 'rose') : badge('Not read yet', 'slate')); ?></td>
-                            <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo $o['last_polled_at'] ? e(date('j M H:i', strtotime($o['last_polled_at']))) : 'Never'; ?></td>
+                            <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo ago($o['last_polled_at']); ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -167,30 +159,43 @@ include __DIR__ . '/backend/templates/sidebar.php';
             </div>
         <?php echo panel_close(); ?>
 
-        <!-- Offline ONUs -->
-        <?php echo panel_open('Offline ONUs', '<a href="onus.php?status=offline" class="text-sm text-brand-600 dark:text-brand-400 font-medium">See all offline</a>'); ?>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="<?php echo UI_THEAD; ?>">
-                        <tr><th class="<?php echo UI_TH; ?>">ONU</th><th class="<?php echo UI_TH; ?>">Serial Number</th><th class="<?php echo UI_TH; ?>">PON Port</th><th class="<?php echo UI_TH; ?>">Status</th><th class="<?php echo UI_TH; ?>">Customer</th></tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
-                    <?php if (!$offlineList): ?>
-                        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 dark:text-slate-500">Every ONU is online.</td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($offlineList as $u): ?>
-                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                            <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="onu.php?id=<?php echo (int)$u['id']; ?>"><?php echo e($u['description']); ?></a></td>
-                            <td class="<?php echo UI_TD; ?> font-mono text-xs text-slate-600 dark:text-slate-300"><?php echo e($u['sn']); ?></td>
-                            <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo e($u['olt_name'] . ' ' . $u['frame'] . '/' . $u['slot'] . '/' . $u['port'] . ' ID ' . $u['ont_id']); ?></td>
-                            <td class="<?php echo UI_TD; ?>"><?php echo run_state_badge($u['run_state']); ?></td>
-                            <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300"><?php echo $u['customer_ref'] !== '' ? e($u['customer_ref']) : '<span class="text-slate-400">--</span>'; ?></td>
-                        </tr>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div><?php echo panel_open('Offline ONUs', '<a href="onus.php?status=offline" class="text-sm text-brand-600 dark:text-brand-400 font-medium">See all offline</a>'); ?>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="<?php echo UI_THEAD; ?>"><tr><th class="<?php echo UI_TH; ?>">ONU</th><th class="<?php echo UI_TH; ?>">PON Port</th><th class="<?php echo UI_TH; ?>">Status</th><th class="<?php echo UI_TH; ?>">Since</th></tr></thead>
+                        <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
+                        <?php if (!$offlineList): ?>
+                            <tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 dark:text-slate-500">Every ONU is online.</td></tr>
+                        <?php endif; ?>
+                        <?php foreach ($offlineList as $u): ?>
+                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                                <td class="<?php echo UI_TD; ?> font-medium"><a class="text-brand-600 dark:text-brand-400" href="onu.php?id=<?php echo (int)$u['id']; ?>"><?php echo e($u['description']); ?></a><div class="text-xs font-mono text-slate-400"><?php echo e($u['sn']); ?></div></td>
+                                <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300 whitespace-nowrap"><?php echo e($u['olt_name']); ?> <span class="font-mono text-xs"><?php echo (int)$u['frame'] . '/' . (int)$u['slot'] . '/' . (int)$u['port']; ?></span></td>
+                                <td class="<?php echo UI_TD; ?>"><?php echo status_badge($u['status_group'], $u['run_state']); ?></td>
+                                <td class="<?php echo UI_TD; ?> text-slate-600 dark:text-slate-300 whitespace-nowrap"><?php echo ago($u['last_down_at']); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php echo panel_close(); ?></div>
+            <div><?php echo panel_open('Latest changes'); ?>
+                <?php if (!$events): ?>
+                    <p class="py-8 text-center text-sm text-slate-400">When an ONU goes offline or comes back, it shows here.</p>
+                <?php else: ?>
+                <ul class="divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+                    <?php foreach ($events as $ev): ?>
+                        <li class="py-2.5 flex items-center justify-between gap-3">
+                            <span><a class="font-medium text-brand-600 dark:text-brand-400" href="onu.php?id=<?php echo (int)$ev['onu_id']; ?>"><?php echo e($ev['description']); ?></a>
+                                <span class="text-xs text-slate-400"><?php echo e($ev['olt_name']); ?></span></span>
+                            <span class="flex items-center gap-3 whitespace-nowrap"><?php echo status_badge($ev['state']); ?><span class="text-xs text-slate-400"><?php echo ago($ev['at']); ?></span></span>
+                        </li>
                     <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php echo panel_close(); ?>
+                </ul>
+                <?php endif; ?>
+            <?php echo panel_close(); ?></div>
+        </div>
     </main>
 
     <?php include __DIR__ . '/backend/templates/footer.php'; ?>
@@ -200,9 +205,8 @@ include __DIR__ . '/backend/templates/sidebar.php';
     (function () {
         var bandLabels = <?php echo json_encode(array_keys($bands)); ?>;
         var bandValues = <?php echo json_encode(array_values($bands)); ?>;
-        var portLabels = <?php echo json_encode(array_keys($perPort)); ?>;
-        var portValues = <?php echo json_encode(array_values($perPort)); ?>;
-        var signalChart, portChart;
+        var net = <?php echo json_encode(array_map(function ($r) { return ['t' => date('H:i', $r['t']), 'on' => $r['online'], 'off' => $r['offline'], 'los' => $r['los'], 'pf' => $r['power_fail']]; }, $net)); ?>;
+        var signalChart, netChart;
 
         function isDark() { return document.documentElement.classList.contains('dark'); }
         function tickColor() { return isDark() ? '#cbd5e1' : '#475569'; }
@@ -211,21 +215,24 @@ include __DIR__ . '/backend/templates/sidebar.php';
 
         function build() {
             if (signalChart) signalChart.destroy();
-            if (portChart) portChart.destroy();
+            if (netChart) netChart.destroy();
             signalChart = new Chart(document.getElementById('signalChart').getContext('2d'), {
                 type: 'doughnut',
                 data: { labels: bandLabels, datasets: [{ data: bandValues, backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#94a3b8'], borderColor: isDark() ? '#1e293b' : '#ffffff', borderWidth: 3 }] },
                 options: { responsive: true, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { color: legendColor(), font: { size: 12 }, padding: 16 } } } }
             });
-            portChart = new Chart(document.getElementById('portChart').getContext('2d'), {
-                type: 'bar',
-                data: { labels: portLabels, datasets: [{ label: 'ONUs', data: portValues, backgroundColor: '#3b63f6', borderRadius: 8, borderSkipped: false }] },
+            var el = document.getElementById('netChart');
+            if (!el) return;
+            netChart = new Chart(el.getContext('2d'), {
+                type: 'line',
+                data: { labels: net.map(function (p) { return p.t; }), datasets: [
+                    { label: 'Online', data: net.map(function (p) { return p.on; }), borderColor: '#10b981', pointRadius: 0, tension: 0.25 },
+                    { label: 'Power fail', data: net.map(function (p) { return p.pf; }), borderColor: '#f59e0b', pointRadius: 0, tension: 0.25 },
+                    { label: 'Signal loss', data: net.map(function (p) { return p.los; }), borderColor: '#ef4444', pointRadius: 0, tension: 0.25 }
+                ] },
                 options: {
-                    responsive: true, plugins: { legend: { display: false } },
-                    scales: {
-                        x: { ticks: { color: tickColor(), font: { size: 11 } }, grid: { display: false } },
-                        y: { beginAtZero: true, ticks: { stepSize: 1, color: tickColor() }, grid: { color: gridColor() } }
-                    }
+                    responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { labels: { color: legendColor() } } },
+                    scales: { x: { ticks: { color: tickColor(), maxTicksLimit: 12 }, grid: { display: false } }, y: { beginAtZero: true, ticks: { color: tickColor(), precision: 0 }, grid: { color: gridColor() } } }
                 }
             });
         }

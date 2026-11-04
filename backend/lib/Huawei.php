@@ -103,7 +103,42 @@ class Huawei
             'line_profiles' => self::parseProfiles($this->raw('display ont-lineprofile gpon all', true)),
             'srv_profiles'  => self::parseProfiles($this->raw('display ont-srvprofile gpon all', true)),
             'vlans'         => self::parseVlans($this->raw('display vlan all', true)),
+            'traffic'       => $this->trafficTables(),
         ];
+    }
+
+    /**
+     * "display ont info summary F/S/P": run state, last up and down time, down cause, model, distance
+     * and light levels for every ONT on one port in one command. Null when the firmware lacks it.
+     */
+    public function portSummary(int $frame, int $slot, int $port): ?array
+    {
+        $this->leavePort();
+        $out = $this->raw("display ont info summary {$frame}/{$slot}/{$port}", true);
+        if (self::findError($out) !== null) {
+            return stripos($out, 'Unknown command') !== false || stripos($out, 'Parameter error') !== false ? null : [];
+        }
+        return self::parseSummary($out);
+    }
+
+    /** Every GPON service port: which ONT, VLAN and GEM port it carries and its speed tables. */
+    public function servicePorts(): array
+    {
+        $this->leavePort();
+        return self::parseServicePortTable($this->raw('display service-port all', true));
+    }
+
+    /** IP traffic tables (speed limits) on the OLT: index => ['cir' => kbps, 'pir' => kbps]. */
+    public function trafficTables(): array
+    {
+        $this->leavePort();
+        return self::parseTrafficTables($this->raw('display traffic table ip from-index 0', true));
+    }
+
+    public function createTrafficTable(int $index, int $kbps): void
+    {
+        $this->leavePort();
+        $this->raw("traffic table ip index {$index} cir {$kbps} pir {$kbps} priority 0 priority-policy local-setting");
     }
 
     public function autofind(): array
@@ -151,7 +186,7 @@ class Huawei
      * Authorize an ONT by serial number and give it internet on a VLAN.
      * Returns the ONT ID the OLT assigned.
      */
-    public function authorize(int $frame, int $slot, int $port, string $sn, int $lineProfile, int $srvProfile, string $desc, ?int $vlan, int $gemport, bool $bridge): int
+    public function authorize(int $frame, int $slot, int $port, string $sn, int $lineProfile, int $srvProfile, string $desc, ?int $vlan, int $gemport, bool $bridge, ?int $upTable = null, ?int $downTable = null): int
     {
         $this->enterPort($frame, $slot);
         $out = $this->raw(sprintf(
@@ -163,15 +198,55 @@ class Huawei
             throw new OltError('The OLT did not say which ONT ID it gave the ONU.');
         }
         if ($vlan !== null) {
-            if ($bridge) {
-                // Untagged traffic on the first LAN port joins the VLAN. Router ONUs have no such port setting.
-                $this->raw("ont port native-vlan {$port} {$ontId} eth 1 vlan {$vlan} priority 0", true);
-            }
-            $this->leavePort();
-            $this->raw("service-port vlan {$vlan} gpon {$frame}/{$slot}/{$port} ont {$ontId} gemport {$gemport} multi-service user-vlan {$vlan} tag-transform translate");
+            $this->addService($frame, $slot, $port, $ontId, $vlan, $gemport, $bridge, $upTable, $downTable);
         }
         $this->leavePort();
         return $ontId;
+    }
+
+    /** The service port that carries an ONT's internet on a VLAN, optionally speed limited by traffic tables. */
+    private function addService(int $frame, int $slot, int $port, int $ontId, int $vlan, int $gemport, bool $bridge, ?int $upTable, ?int $downTable): void
+    {
+        if ($bridge) {
+            // Untagged traffic on the first LAN port joins the VLAN. Router ONUs have no such port setting.
+            $this->enterPort($frame, $slot);
+            $this->raw("ont port native-vlan {$port} {$ontId} eth 1 vlan {$vlan} priority 0", true);
+        }
+        $this->leavePort();
+        $cmd = "service-port vlan {$vlan} gpon {$frame}/{$slot}/{$port} ont {$ontId} gemport {$gemport} multi-service user-vlan {$vlan} tag-transform translate";
+        if ($upTable !== null && $downTable !== null) {
+            // inbound = from the customer (upload), outbound = to the customer (download)
+            $cmd .= " inbound traffic-table index {$upTable} outbound traffic-table index {$downTable}";
+        }
+        $this->raw($cmd);
+    }
+
+    /** Replace an ONT's service ports with one on the new VLAN and speed. Returns how many were replaced. */
+    public function setService(int $frame, int $slot, int $port, int $ontId, int $vlan, int $gemport, bool $bridge, ?int $upTable, ?int $downTable): int
+    {
+        $this->leavePort();
+        $indexes = self::parseServicePorts($this->raw("display service-port port {$frame}/{$slot}/{$port} ont {$ontId}", true));
+        foreach ($indexes as $i) {
+            $this->raw("undo service-port {$i}");
+        }
+        $this->addService($frame, $slot, $port, $ontId, $vlan, $gemport, $bridge, $upTable, $downTable);
+        return count($indexes);
+    }
+
+    /** Disable (the ONT stays authorized but gets no service) or enable it again. */
+    public function setActive(int $frame, int $slot, int $port, int $ontId, bool $active): void
+    {
+        $this->enterPort($frame, $slot);
+        $this->raw(($active ? 'ont activate' : 'ont deactivate') . " {$port} {$ontId}");
+        $this->leavePort();
+    }
+
+    /** Put a new ONU in place of a broken one: same ONT ID, profiles, VLAN and speed, new serial. */
+    public function replaceSn(int $frame, int $slot, int $port, int $ontId, string $sn): void
+    {
+        $this->enterPort($frame, $slot);
+        $this->raw("ont modify {$port} {$ontId} sn {$sn}");
+        $this->leavePort();
     }
 
     public function reboot(int $frame, int $slot, int $port, int $ontId): void
@@ -352,6 +427,94 @@ class Huawei
             ];
         }
         return $rows;
+    }
+
+    /**
+     * "display ont info summary": a state table (ID, run state, last up, last down, down cause) and a
+     * device table (ID, SN, type, distance, Rx/Tx). Times may carry a "+03:00" zone, absent ones are "-".
+     */
+    public static function parseSummary(string $out): array
+    {
+        $rows = [];
+        $table = '';
+        $time = '(\d{4}-\d\d-\d\d\s+\d\d:\d\d:\d\d(?:[+-]\d\d:\d\d)?|-+)';
+        $num = '(-?\d+(?:\.\d+)?|-+)';
+        foreach (explode("\n", $out) as $line) {
+            if (preg_match('/DownCause|Last\s+Last/i', $line)) { $table = 'state'; continue; }
+            if (preg_match('/Distance/i', $line)) { $table = 'device'; continue; }
+            if ($table === 'state' && preg_match("/^\s*(\d+)\s+([a-z]+)\s+{$time}\s+{$time}\s+(\S+)?\s*$/i", $line, $r)) {
+                $id = (int)$r[1];
+                $rows[$id] = ($rows[$id] ?? []) + [
+                    'run_state'  => strtolower($r[2]),
+                    'last_up'    => self::summaryTime($r[3]),
+                    'last_down'  => self::summaryTime($r[4]),
+                    'down_cause' => isset($r[5]) && trim($r[5], '-') !== '' ? $r[5] : '',
+                ];
+            } elseif ($table === 'device' && preg_match("/^\s*(\d+)\s+([0-9A-Fa-f]{16})\s+(\S+)\s+{$num}\s+{$num}\/{$num}\s*(.*)$/", $line, $r)) {
+                $id = (int)$r[1];
+                $f = function ($v) { return is_numeric($v) ? (float)$v : null; };
+                $rows[$id] = ($rows[$id] ?? []) + [
+                    'sn'          => strtoupper($r[2]),
+                    'model'       => trim($r[3], '-'),
+                    'distance_m'  => is_numeric($r[4]) ? (int)$r[4] : null,
+                    'rx_power'    => $f($r[5]),
+                    'tx_power'    => $f($r[6]),
+                    'description' => trim($r[7]),
+                ];
+            }
+        }
+        return $rows;
+    }
+
+    private static function summaryTime(string $s): ?string
+    {
+        if (!preg_match('/^(\d{4}-\d\d-\d\d)\s+(\d\d:\d\d:\d\d)/', $s, $m)) {
+            return null;
+        }
+        return $m[1] . ' ' . $m[2];
+    }
+
+    /**
+     * "display service-port": INDEX VLAN ATTR gpon F/S /P VPI(ONT ID) VCI(GEM) FLOW-TYPE FLOW-PARA RX TX STATE.
+     * RX and TX are the inbound (upload) and outbound (download) traffic table indexes.
+     */
+    public static function parseServicePortTable(string $out): array
+    {
+        $rows = [];
+        preg_match_all('/^\s*(\d+)\s+(\d+)\s+\S+\s+gpon\s+(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s+(\d+)\s+(\d+)\s+\S+\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)/mi', $out, $m, PREG_SET_ORDER);
+        foreach ($m as $r) {
+            $rows[] = [
+                'index' => (int)$r[1], 'vlan' => (int)$r[2], 'frame' => (int)$r[3], 'slot' => (int)$r[4], 'port' => (int)$r[5],
+                'ont_id' => (int)$r[6], 'gemport' => (int)$r[7],
+                'up_table' => is_numeric($r[8]) ? (int)$r[8] : null, 'down_table' => is_numeric($r[9]) ? (int)$r[9] : null,
+                'state' => strtolower($r[10]),
+            ];
+        }
+        return $rows;
+    }
+
+    /** "display traffic table ip": TID, CIR, CBS, PIR, PBS ... per row. */
+    public static function parseTrafficTables(string $out): array
+    {
+        $tables = [];
+        preg_match_all('/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s/m', $out, $m, PREG_SET_ORDER);
+        foreach ($m as $r) {
+            $tables[(int)$r[1]] = ['cir' => (int)$r[2], 'pir' => (int)$r[4]];
+        }
+        return $tables;
+    }
+
+    /**
+     * Why an ONT is offline, as SmartOLT style groups: power_fail (the ONU lost power, Huawei says
+     * dying-gasp), los (no light: fibre cut, bent or unplugged), other.
+     */
+    public static function downCategory(string $runState, string $cause): string
+    {
+        if (strtolower($runState) === 'online') return 'online';
+        $c = strtolower($cause);
+        if (strpos($c, 'dying') !== false || strpos($c, 'power') !== false) return 'power_fail';
+        if (preg_match('/^(los|losi|lofi|loami|lobi|sufi|drift)/', $c)) return 'los';
+        return 'other';
     }
 
     public static function parseOntAdd(string $out): ?int

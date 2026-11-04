@@ -34,7 +34,7 @@ function stat_card(string $label, $value, string $tone, string $iconPath): strin
 /** Rounded pill. $tone: emerald, rose, amber, slate, brand. */
 function badge(string $text, string $tone): string
 {
-    return '<span class="inline-flex items-center rounded-full bg-' . $tone . '-50 dark:bg-' . $tone . '-900/40 text-' . $tone . '-700 dark:text-' . $tone . '-300 px-2 py-0.5 text-xs font-medium">' . e($text) . '</span>';
+    return '<span class="inline-flex items-center whitespace-nowrap rounded-full bg-' . $tone . '-50 dark:bg-' . $tone . '-900/40 text-' . $tone . '-700 dark:text-' . $tone . '-300 px-2 py-0.5 text-xs font-medium">' . e($text) . '</span>';
 }
 
 function run_state_badge(string $state): string
@@ -55,6 +55,79 @@ function signal_html($rx): string
     $v = (float)$rx;
     $tone = ($v < -27 || $v > -8) ? 'text-rose-600 dark:text-rose-400' : ($v < -25 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400');
     return '<span class="font-semibold whitespace-nowrap ' . $tone . '">' . number_format($v, 2) . ' dBm</span>';
+}
+
+/** Status with the reason an ONU is down, the way the OLT groups it. */
+function status_badge(string $group, string $runState = ''): string
+{
+    switch ($group) {
+        case 'online':     return badge('Online', 'emerald');
+        case 'power_fail': return badge('Power fail', 'amber');
+        case 'los':        return badge('Signal loss (LOS)', 'rose');
+        case 'disabled':   return badge('Disabled', 'slate');
+        case 'other':      return badge('Offline', 'rose');
+    }
+    return run_state_badge($runState);
+}
+
+function status_label(string $group): string
+{
+    return ['online' => 'Online', 'power_fail' => 'Power fail', 'los' => 'Signal loss (LOS)', 'disabled' => 'Disabled', 'other' => 'Offline'][$group] ?? 'Not read yet';
+}
+
+function signal_level($rx): string
+{
+    if ($rx === null || $rx === '') return '';
+    $v = (float)$rx;
+    if ($v < OltManager::SIGNAL_CRITICAL || $v > OltManager::SIGNAL_HOT) return 'Critical';
+    return $v < OltManager::SIGNAL_WARNING ? 'Warning' : 'Good';
+}
+
+function fmt_speed($kbps): string
+{
+    if ($kbps === null || $kbps === '') return '--';
+    $m = (int)$kbps / 1024;
+    return ($m >= 1 ? rtrim(rtrim(number_format($m, 2, '.', ''), '0'), '.') . ' Mbps' : (int)$kbps . ' kbps');
+}
+
+function fmt_distance($m): string
+{
+    if ($m === null || $m === '') return '--';
+    return (int)$m >= 1000 ? number_format((int)$m / 1000, 2) . ' km' : (int)$m . ' m';
+}
+
+/** "5 min ago", "3 h ago", "2 days ago" for a stored time. */
+function ago(?string $at): string
+{
+    if (!$at) return '--';
+    $s = max(0, time() - strtotime($at));
+    if ($s < 90) return 'just now';
+    if ($s < 3600) return round($s / 60) . ' min ago';
+    if ($s < 86400) return round($s / 3600) . ' h ago';
+    $d = (int)round($s / 86400);
+    return $d . ($d === 1 ? ' day ago' : ' days ago');
+}
+
+/** <option> list from rows with id and name. */
+function options(array $rows, $selected, string $none = ''): string
+{
+    $html = $none !== '' ? '<option value="">' . e($none) . '</option>' : '';
+    foreach ($rows as $r) {
+        $html .= '<option value="' . (int)$r['id'] . '"' . ((string)$selected === (string)$r['id'] ? ' selected' : '') . '>' . e($r['name']) . '</option>';
+    }
+    return $html;
+}
+
+/** Tab bar under a page heading: [href => label], $active is the href that is lit. */
+function tabs(array $items, string $active): string
+{
+    $html = '<div class="mb-6 flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-700">';
+    foreach ($items as $href => $label) {
+        $on = $href === $active;
+        $html .= '<a href="' . e($href) . '" class="px-4 py-2 -mb-px text-sm font-medium border-b-2 transition '
+            . ($on ? 'border-brand-600 text-brand-700 dark:text-brand-300' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200') . '">' . e($label) . '</a>';
+    }
+    return $html . '</div>';
 }
 
 function flash_messages(): string

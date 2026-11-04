@@ -106,6 +106,34 @@ try {
         case 'onu.describe':
             out(['ok' => true, 'description' => $mgr->describe($id, (string)($in['description'] ?? ''), isset($in['customer_ref']) ? (string)$in['customer_ref'] : null)]);
 
+        case 'onu.meta':
+            $mgr->saveMeta($id, $in);
+            out(['ok' => true]);
+
+        case 'onu.service':
+            $mgr->setService($id, $in);
+            out(['ok' => true, 'onu' => $mgr->onu($id)]);
+
+        case 'onu.enable':
+        case 'onu.disable':
+            $mgr->setActive($id, $in['action'] === 'onu.enable');
+            out(['ok' => true]);
+
+        case 'onu.replace_sn':
+            out(['ok' => true, 'sn' => $mgr->replaceSn($id, (string)($in['sn'] ?? ''))]);
+
+        case 'onu.bulk':
+            out(['ok' => true] + $mgr->bulk((array)($in['ids'] ?? []), (string)($in['bulk_action'] ?? ''), (int)($in['speed_profile_id'] ?? 0)));
+
+        case 'onu.history':
+            out(['ok' => true, 'signal' => $mgr->signalHistory($id, min(30, max(1, (int)($in['days'] ?? 7)))), 'events' => $mgr->statusEvents($id)]);
+
+        case 'stats':
+            out(['ok' => true, 'counts' => $mgr->counts((int)($in['olt_id'] ?? 0)), 'network' => $mgr->networkStatus(24, (int)($in['olt_id'] ?? 0))]);
+
+        case 'catalogs.list':
+            out(['ok' => true, 'zones' => $mgr->zones(), 'odbs' => $mgr->odbs(), 'onu_types' => $mgr->onuTypes(), 'speed_profiles' => $mgr->speedProfiles()]);
+
         case 'actions.list':
             out(['ok' => true, 'actions' => $mgr->actions(200)]);
     }

@@ -13,17 +13,20 @@ if (!$server) {
 
 $state = [
     'onts' => [
-        // "slot/port/id" => [sn, desc, run]
-        '1/0/0' => ['485754434D2F0001', 'alice_home', 'online'],
-        '1/0/1' => ['485754434D2F0002', 'bob_shop', 'offline'],
-        '1/1/0' => ['5A54454700000003', 'carol', 'online'],
+        // "slot/port/id" => [sn, desc, run, last down cause, model, control flag]
+        '1/0/0' => ['485754434D2F0001', 'alice_home', 'online', 'dying-gasp', 'EG8145V5', 'active'],
+        '1/0/1' => ['485754434D2F0002', 'bob_shop', 'offline', 'dying-gasp', 'HG8546M', 'active'],
+        '1/1/0' => ['5A54454700000003', 'carol', 'online', '', 'F660', 'active'],
+        '1/1/1' => ['485754434D2F0004', 'erin_flat', 'offline', 'LOS', 'HG8010H', 'active'],
     ],
+    // traffic table index => kbps (0 to 6 are the OLT's own defaults)
+    'tt' => [0 => 1024, 6 => 1024000],
     'autofind' => [
         ['1/0', '485754434D2F5A9A', 'HWTC', 'EG8145V5'],
         ['1/2', '5A544547C0FFEE01', 'ZTEG', 'F660'],
     ],
-    'sp' => [ // index => "slot/port/id"
-        10 => '1/0/0', 11 => '1/0/1', 12 => '1/1/0',
+    'sp' => [ // index => ["slot/port/id", vlan, gem port, inbound table, outbound table]
+        10 => ['1/0/0', 100, 1, '-', '-'], 11 => ['1/0/1', 100, 1, '-', '-'], 12 => ['1/1/0', 100, 1, '-', '-'], 13 => ['1/1/1', 100, 1, '-', '-'],
     ],
 ];
 
@@ -76,7 +79,7 @@ function ont_info_table(array $onts, ?string $only = null): string
     foreach ($onts as $k => [$sn, $desc, $run]) {
         [$sl, $p, $id] = explode('/', $k);
         if ($only !== null && "{$sl}/{$p}" !== $only) continue;
-        $s .= sprintf("  0/ %d/%d  %3d  %s  active      %-8s normal   match    no \n", $sl, $p, $id, $sn, $run);
+        $s .= sprintf("  0/ %d/%d  %3d  %s  %-11s %-8s normal   match    no \n", $sl, $p, $id, $sn, $onts[$k][5], $run);
     }
     $s .= "  -----------------------------------------------------------------------------\n"
         . "  F/S/P   ONT        Description                                           \n"
@@ -201,9 +204,9 @@ while (true) {
                 [$sn, $desc, $run] = $state['onts'][$k];
                 paged($c, "  -----------------------------------------------------------------------------\n"
                     . "  F/S/P                   : 0/{$mode}/{$m[1]}\n  ONT-ID                  : {$m[2]}\n"
-                    . "  Control flag            : active\n  Run state               : {$run}\n  Config state            : normal\n"
+                    . "  Control flag            : {$state['onts'][$k][5]}\n  Run state               : {$run}\n  Config state            : normal\n"
                     . "  Match state             : match\n  SN                      : {$sn} (HWTC-" . substr($sn, 8) . ")\n"
-                    . "  Description             : {$desc}\n  Last down cause         : dying-gasp\n"
+                    . "  Description             : {$desc}\n  Last down cause         : " . ($state['onts'][$k][3] ?: '-') . "\n"
                     . "  Last up time            : 2026-11-04 07:10:02+03:00\n  Last down time          : 2026-11-04 07:05:44+03:00\n"
                     . "  ONT online duration     : 0 day(s), 1 hour(s), 20 minute(s), 3 second(s)\n"
                     . "  Line profile ID         : 10\n  Line profile name       : INTERNET_100\n");
@@ -216,27 +219,34 @@ while (true) {
             } else {
                 $id = 0;
                 while (isset($state['onts']["{$mode}/{$m[1]}/{$id}"])) $id++;
-                $state['onts']["{$mode}/{$m[1]}/{$id}"] = [$m[2], $m[5], 'online'];
+                $model = '';
+                foreach ($state['autofind'] as $a) if ($a[1] === $m[2]) $model = $a[3];
+                $state['onts']["{$mode}/{$m[1]}/{$id}"] = [$m[2], $m[5], 'online', '', $model, 'active'];
                 $state['autofind'] = array_values(array_filter($state['autofind'], function ($a) use ($m) { return $a[1] !== $m[2]; }));
                 $out = "  Number of ONTs that can be added: 1, success: 1\n  PortID :{$m[1]}, ONTID :{$id}\n";
             }
         } elseif (preg_match('/^ont port native-vlan (\d+) (\d+) eth 1 vlan (\d+) priority 0$/', $cmd) && is_numeric($mode)) {
-        } elseif (preg_match('/^service-port vlan (\d+) gpon 0\/(\d+)\/(\d+) ont (\d+) gemport (\d+) multi-service user-vlan \d+ tag-transform translate$/', $cmd, $m) && $mode === 'config') {
-            $state['sp'][max(array_keys($state['sp']) ?: [0]) + 1] = "{$m[2]}/{$m[3]}/{$m[4]}";
-        } elseif (preg_match('/^display service-port port 0\/(\d+)\/(\d+) ont (\d+)$/', $cmd, $m) && $mode === 'config') {
+        } elseif (preg_match('/^service-port vlan (\d+) gpon 0\/(\d+)\/(\d+) ont (\d+) gemport (\d+) multi-service user-vlan \d+ tag-transform translate( inbound traffic-table index (\d+) outbound traffic-table index (\d+))?$/', $cmd, $m) && $mode === 'config') {
+            if (isset($m[7]) && (!isset($state['tt'][(int)$m[7]]) || !isset($state['tt'][(int)$m[8]]))) $out = "  Failure: The traffic table does not exist\n";
+            else $state['sp'][max(array_keys($state['sp']) ?: [0]) + 1] = ["{$m[2]}/{$m[3]}/{$m[4]}", (int)$m[1], (int)$m[5], $m[7] ?? '-', $m[8] ?? '-'];
+        } elseif ((preg_match('/^display service-port port 0\/(\d+)\/(\d+) ont (\d+)$/', $cmd, $m) || $cmd === 'display service-port all') && $mode === 'config') {
             $s = "  INDEX VLAN VLAN     PORT F/ S/ P VPI  VCI   FLOW  FLOW       RX   TX   STATE\n"
                . "        ID   ATTR     TYPE                    TYPE  PARA\n"
                . "  -----------------------------------------------------------------------------\n";
             $n = 0;
-            foreach ($state['sp'] as $i => $k) {
-                if ($k === "{$m[1]}/{$m[2]}/{$m[3]}") { $s .= sprintf("  %5d  100 common   gpon 0/%d /%d  %d    1     vlan  100        -    -    up\n", $i, $m[1], $m[2], $m[3]); $n++; }
+            foreach ($state['sp'] as $i => [$k, $vlan, $gem, $in, $outT]) {
+                if ($m && $k !== "{$m[1]}/{$m[2]}/{$m[3]}") continue;
+                [$sl, $p, $id] = explode('/', $k);
+                $s .= sprintf("  %5d %4d common   gpon 0/%d /%d  %-4d %-5d vlan  %-10d %-4s %-4s up\n", $i, $vlan, $sl, $p, $id, $gem, $vlan, $in, $outT);
+                $n++;
             }
             $out = $n ? $s . "  -----------------------------------------------------------------------------\n   Total : {$n}  (Up/Down :    {$n}/0)\n" : "  Failure: No service virtual port can be operated\n";
+            if ($n > 8) { paged($c, $out); $out = ''; }
         } elseif (preg_match('/^undo service-port (\d+)$/', $cmd, $m) && $mode === 'config') {
             unset($state['sp'][(int)$m[1]]);
         } elseif (preg_match('/^ont delete (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
             $k = "{$mode}/{$m[1]}/{$m[2]}";
-            if (in_array($k, $state['sp'], true)) $out = "  Failure: This configured object has some service virtual ports\n";
+            if (in_array($k, array_column($state['sp'], 0), true)) $out = "  Failure: This configured object has some service virtual ports\n";
             elseif (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";
             else { unset($state['onts'][$k]); $out = "  Number of ONTs that can be deleted: 1, success: 1\n"; }
         } elseif (preg_match('/^ont reset (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
@@ -247,6 +257,49 @@ while (true) {
         } elseif (preg_match('/^ont modify (\d+) (\d+) desc "([^"]*)"$/', $cmd, $m) && is_numeric($mode)) {
             $k = "{$mode}/{$m[1]}/{$m[2]}";
             if (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n"; else $state['onts'][$k][1] = $m[3];
+        } elseif (preg_match('/^display ont info summary 0\/(\d+)\/(\d+)$/', $cmd, $m) && $mode === 'config') {
+            $rows = array_filter($state['onts'], function ($k) use ($m) { return strpos($k, "{$m[1]}/{$m[2]}/") === 0; }, ARRAY_FILTER_USE_KEY);
+            if (!$rows) {
+                $out = "  Failure: There is no ONT in the port\n";
+            } else {
+                $s = "  ----------------------------------------------------------------------------\n"
+                   . "  In port 0/{$m[1]}/{$m[2]}, the total of ONTs are: " . count($rows) . ", online: " . count(array_filter($rows, function ($o) { return $o[2] === 'online'; })) . "\n"
+                   . "  ----------------------------------------------------------------------------\n"
+                   . "  ONT  Run     Last                Last                Last\n"
+                   . "  ID   State   UpTime              DownTime            DownCause\n"
+                   . "  ----------------------------------------------------------------------------\n";
+                foreach ($rows as $k => $o) {
+                    $id = (int)explode('/', $k)[2];
+                    $s .= sprintf("  %-4d %-7s %-19s %-19s %s\n", $id, $o[2], '2026-11-04 07:10:02+03:00', $o[3] ? '2026-11-04 07:05:44+03:00' : '-', $o[3] ?: '-');
+                }
+                $s .= "  ----------------------------------------------------------------------------\n"
+                    . "  ONT        SN        Type          Distance Rx/Tx power  Description\n"
+                    . "  ID                                    (m)      (dBm)\n"
+                    . "  ----------------------------------------------------------------------------\n";
+                foreach ($rows as $k => $o) {
+                    $id = (int)explode('/', $k)[2];
+                    $pw = $o[2] === 'online' ? sprintf('-%d.03/2.27', 19 + $id * 9) : '-/-';
+                    $s .= sprintf("  %-3d %s %-15s %-6s %-12s %s\n", $id, $o[0], $o[4] ?: '-', $o[2] === 'online' ? 1250 + $id * 300 : '-', $pw, $o[1]);
+                }
+                paged($c, $s . "  ----------------------------------------------------------------------------\n");
+            }
+        } elseif ($cmd === 'display traffic table ip from-index 0' && $mode === 'config') {
+            $s = "  ----------------------------------------------------------------------------\n"
+               . "  TID CIR(kbps)  CBS(bytes)  PIR(kbps)  PBS(bytes)  Pri  Copy-policy  Pri-Policy\n"
+               . "  ----------------------------------------------------------------------------\n";
+            foreach ($state['tt'] as $i => $k) $s .= sprintf("  %3d %9d %11d %10d %11d    0  -            local-pri\n", $i, $k, $k * 32, $k, $k * 64);
+            $out = $s . "  ----------------------------------------------------------------------------\n  Total Num : " . count($state['tt']) . "\n";
+        } elseif (preg_match('/^traffic table ip index (\d+) cir (\d+) pir (\d+) priority 0 priority-policy local-setting$/', $cmd, $m) && $mode === 'config') {
+            if (isset($state['tt'][(int)$m[1]])) $out = "  Failure: The traffic table already exists\n";
+            else { $state['tt'][(int)$m[1]] = (int)$m[2]; ksort($state['tt']); $out = "  Create traffic descriptor record successfully\n  TD Index : {$m[1]}\n"; }
+        } elseif (preg_match('/^ont (activate|deactivate) (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
+            $k = "{$mode}/{$m[2]}/{$m[3]}";
+            if (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";
+            else $state['onts'][$k][5] = $m[1] === 'activate' ? 'active' : 'deactivated';
+        } elseif (preg_match('/^ont modify (\d+) (\d+) sn ([0-9A-F]{16})$/', $cmd, $m) && is_numeric($mode)) {
+            $k = "{$mode}/{$m[1]}/{$m[2]}";
+            if (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";
+            else { $state['onts'][$k][0] = $m[3]; $state['onts'][$k][4] = ''; }
         } else {
             $out = "                  ^\n  % Unknown command, the error locates at '^'\n";
         }
