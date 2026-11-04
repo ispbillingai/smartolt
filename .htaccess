@@ -2,3 +2,5 @@
     SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
 </FilesMatch>
 DirectoryIndex index.php index.html
+# Apache does not hand the Authorization header to PHP-FPM on its own; api.php reads the Bearer token from it.
+SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
