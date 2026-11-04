@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Change Password · SmartOLT</title>
+    <title>Change Password — Hotspot AP</title>
     <link rel="icon" type="image/png" href="https://hotspots.co.ke/logo.png">
     <link rel="apple-touch-icon" href="https://hotspots.co.ke/logo.png">
     <script>
         (function () {
             try {
-                var stored = localStorage.getItem('smartolt-theme');
+                var stored = localStorage.getItem('lanaccess-theme');
                 var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
                 if (stored === 'dark' || (!stored && prefersDark)) {
                     document.documentElement.classList.add('dark');
@@ -39,12 +39,12 @@
     </script>
     <style>
         .auth-bg {
-            background-color: #f1f5f9;
+            background: linear-gradient(135deg, #1c2f75 0%, #2547e0 50%, #1d39b8 100%);
             background-size: 200% 200%;
             animation: bgShift 18s ease infinite;
         }
         html.dark .auth-bg {
-            background-color: #0b1120;
+            background: linear-gradient(135deg, #0f172a 0%, #1c3293 50%, #1d39b8 100%);
             background-size: 200% 200%;
             animation: bgShift 18s ease infinite;
         }
@@ -67,7 +67,7 @@
     <div class="w-full max-w-md">
         <div class="glass border border-white/30 dark:border-slate-700/60 rounded-2xl shadow-2xl p-8">
             <div class="flex flex-col items-center text-center mb-6">
-                <div class="w-12 h-12 rounded-2xl bg-brand-600 flex items-center justify-center shadow-glow mb-3">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-glow mb-3">
                     <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                     </svg>

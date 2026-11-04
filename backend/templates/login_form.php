@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartOLT — Sign In</title>
+    <title>Hotspot AP Dashboard — Sign In</title>
     <link rel="icon" type="image/png" href="https://hotspots.co.ke/logo.png">
     <link rel="apple-touch-icon" href="https://hotspots.co.ke/logo.png">
     <script>
         (function () {
             try {
-                var stored = localStorage.getItem('smartolt-theme');
+                var stored = localStorage.getItem('hotspotap-theme');
                 if (stored === 'light') {
                     document.documentElement.classList.remove('dark');
                 }
@@ -56,8 +56,8 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M4.222 12.404a11 11 0 0115.556 0M1 8.404a16.5 16.5 0 0122 0M12 20h.01"/>
                     </svg>
                 </div>
-                <h1 class="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">SmartOLT</h1>
-                <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Manage your OLTs and every ONU on them</p>
+                <h1 class="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">Hotspot AP Dashboard</h1>
+                <p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Secure remote access to your access points</p>
             </div>
 
             <?php if (isset($error)): ?>
@@ -113,10 +113,10 @@
                 <form class="space-y-4" method="POST">
                     <input type="hidden" name="reset_password" value="1">
                     <div>
-                        <label for="master_email" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Master Password</label>
-                        <input id="master_email" name="master_email" type="password" required
+                        <label for="master_email" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Master Email</label>
+                        <input id="master_email" name="master_email" type="email" required
                                class="block w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-3.5 py-2.5 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition"
-                               placeholder="••••••••">
+                               placeholder="example@gmail.com">
                     </div>
 
                     <div class="flex gap-2">

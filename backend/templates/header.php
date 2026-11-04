@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars(($pageTitle ?? '') !== '' ? $pageTitle . ' · SmartOLT' : 'SmartOLT'); ?></title>
+    <title>Hotspot AP Dashboard</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://hotspots.co.ke/logo.png">
@@ -15,7 +15,7 @@
         // Apply persisted theme before Tailwind paints to avoid FOUC
         (function () {
             try {
-                var stored = localStorage.getItem('smartolt-theme');
+                var stored = localStorage.getItem('lanaccess-theme');
                 var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
                 if (stored === 'dark' || (!stored && prefersDark)) {
                     document.documentElement.classList.add('dark');
@@ -51,7 +51,7 @@
             }
         };
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         /* Smooth color transitions when toggling theme */
@@ -81,12 +81,12 @@
                     </svg>
                 </button>
                 <div class="flex items-center gap-2">
-                    <div class="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center shadow-glow">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-glow">
                         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v3a2 2 0 01-2 2M5 12a2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
                         </svg>
                     </div>
-                    <h1 class="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">SmartOLT</h1>
+                    <h1 class="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Hotspot AP Dashboard</h1>
                 </div>
             </div>
             <div class="flex items-center gap-2">
@@ -119,7 +119,7 @@
                     html.classList.add('theme-transition');
                     html.classList.toggle('dark');
                     try {
-                        localStorage.setItem('smartolt-theme', html.classList.contains('dark') ? 'dark' : 'light');
+                        localStorage.setItem('lanaccess-theme', html.classList.contains('dark') ? 'dark' : 'light');
                     } catch (e) { /* ignore */ }
                     // Dispatch event so charts can re-render with theme-aware colors
                     window.dispatchEvent(new CustomEvent('themechange', { detail: { dark: html.classList.contains('dark') } }));
@@ -149,25 +149,5 @@
                     }
                 });
             }
-
-            // Any form marked data-busy shows a "working" overlay while the OLT answers.
-            document.querySelectorAll('form[data-busy]').forEach(function (f) {
-                f.addEventListener('submit', function () {
-                    var o = document.getElementById('busyOverlay');
-                    if (o) {
-                        document.getElementById('busyText').textContent = f.getAttribute('data-busy') || 'Talking to the OLT...';
-                        o.classList.remove('hidden');
-                        o.classList.add('flex');
-                    }
-                });
-            });
         });
     </script>
-
-    <!-- Shown while a form waits on the OLT -->
-    <div id="busyOverlay" class="hidden fixed inset-0 z-[60] bg-slate-900/50 items-center justify-center">
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft px-6 py-5 flex items-center gap-3">
-            <svg class="w-5 h-5 animate-spin text-brand-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
-            <span id="busyText" class="text-sm font-medium text-slate-700 dark:text-slate-200">Talking to the OLT...</span>
-        </div>
-    </div>

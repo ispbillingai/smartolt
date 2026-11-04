@@ -1,0 +1,29 @@
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Set the base path
+RewriteBase /backend/api/rest/
+
+# Handle all OPTIONS requests for CORS preflight
+RewriteRule .* - [E=HTTP_ORIGIN:%{HTTP:Origin}]
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule .* - [R=200,L]
+
+# Ensure PHP errors don't get in the API response
+#php_flag display_errors off
+#php_flag log_errors on
+
+# Set JSON content type for the API responses
+<IfModule mod_headers.c>
+    Header always set Content-Type "application/json" 
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>
+
+# PHP settings
+#php_value post_max_size 10M
+#php_value upload_max_filesize 10M
+#php_value max_execution_time 300
+#php_value max_input_time 300

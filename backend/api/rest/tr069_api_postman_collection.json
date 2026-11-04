@@ -1,0 +1,262 @@
+
+<?php
+/*
+https://acs.ispledger.cc/backend/api/rest/parameters.php
+
+{
+  "action": "configure_wifi",
+  "device_id": "1",
+  "ssid": "MyNevwWiFi",
+  "password": "StrongPassword123"
+}
+{
+  "info": {
+    "_postman_id": "c9b4e5a6-f1b1-4a7e-8e5d-1b0c6a2d9a0e",
+    "name": "TR069 API",
+    "description": "A collection of requests for the TR069 REST API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Device Parameters",
+      "item": [
+        {
+          "name": "List All Devices",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/parameters.php?list_all_devices=1",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"],
+              "query": [
+                {
+                  "key": "list_all_devices",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Parameters",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/parameters.php?device_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"],
+              "query": [
+                {
+                  "key": "device_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Parameters By Serial",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/parameters.php?serial=ABCD1234",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"],
+              "query": [
+                {
+                  "key": "serial",
+                  "value": "ABCD1234"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Parameter By Name",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/parameters.php?device_id=1&param=Device.WiFi.SSID.1.SSID",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"],
+              "query": [
+                {
+                  "key": "device_id",
+                  "value": "1"
+                },
+                {
+                  "key": "param",
+                  "value": "Device.WiFi.SSID.1.SSID"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set Parameter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"set_parameter\",\n    \"device_id\": \"1\",\n    \"param_name\": \"Device.WiFi.SSID.1.SSID\",\n    \"param_value\": \"MyNewWiFiName\",\n    \"param_type\": \"string\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Device Configuration",
+      "item": [
+        {
+          "name": "Configure WiFi",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"configure_wifi\",\n    \"device_id\": \"1\",\n    \"ssid\": \"MyNevwWiFi\",\n    \"password\": \"StrongPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        },
+        {
+          "name": "Configure WAN (DHCP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"configure_wan\",\n    \"device_id\": \"1\",\n    \"connection_type\": \"DHCP\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        },
+        {
+          "name": "Configure WAN (Static IP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"configure_wan\",\n    \"device_id\": \"1\",\n    \"connection_type\": \"Static\",\n    \"ip_address\": \"192.168.1.100\",\n    \"subnet_mask\": \"255.255.255.0\",\n    \"gateway\": \"192.168.1.1\",\n    \"dns_server1\": \"8.8.8.8\",\n    \"dns_server2\": \"8.8.4.4\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        },
+        {
+          "name": "Configure WAN (PPPoE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"configure_wan\",\n    \"device_id\": \"1\",\n    \"connection_type\": \"PPPoE\",\n    \"pppoe_username\": \"user@isp.com\",\n    \"pppoe_password\": \"mypassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        },
+        {
+          "name": "Reboot Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"reboot\",\n    \"device_id\": \"1\",\n    \"reason\": \"Maintenance reboot\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Device Management",
+      "item": [
+        {
+          "name": "Update Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"update_device\",\n    \"device_id\": \"1\",\n    \"manufacturer\": \"Huawei Technologies Co., Ltd\",\n    \"model\": \"HG8546M\",\n    \"software_version\": \"V1.2.4\",\n    \"tr069_password\": \"NewSecurePassword123\",\n    \"local_admin_password\": \"AdminPass456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parameters.php",
+              "host": ["{{base_url}}"],
+              "path": ["parameters.php"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "/backend/api/rest",
+      "type": "string"
+    }
+  ]
+}
