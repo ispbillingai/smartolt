@@ -49,12 +49,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_dir($upload_dir)) {
                 mkdir($upload_dir, 0755, true);
             }
-            $file_name = $_SESSION['user_id'] . '_' . time() . '.' . pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION);
-            $file_path = $upload_dir . $file_name;
-            if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $file_path)) {
-                $profile_picture = '/uploads/' . $file_name;
+            // SECURITY: only accept real image files; never trust the client extension.
+            $ext = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
+            $allowed_ext = ['jpg','jpeg','png','webp','gif'];
+            $img_info = @getimagesize($_FILES['profile_picture']['tmp_name']);
+            if (!in_array($ext, $allowed_ext, true) || $img_info === false) {
+                $errors[] = "Profile picture must be a JPG, PNG, WEBP or GIF image.";
             } else {
-                $errors[] = "Failed to upload profile picture.";
+                $file_name = $_SESSION['user_id'] . '_' . time() . '.' . $ext;
+                $file_path = $upload_dir . $file_name;
+                if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $file_path)) {
+                    $profile_picture = '/uploads/' . $file_name;
+                } else {
+                    $errors[] = "Failed to upload profile picture.";
+                }
             }
         }
 
