@@ -30,13 +30,16 @@ if [ ! -f "$PKI/pki/issued/server.crt" ]; then
     cd - >/dev/null
 fi
 
-mkdir -p "$DIR/ccd" /var/log/openvpn
+# Logins and fixed IPs under /var/lib: the sites' PHP-FPM runs with /etc read-only (ProtectSystem).
+DATA=/var/lib/smartolt-vpn
+mkdir -p "$DATA/ccd" /var/log/openvpn
+chmod 700 "$DATA"
 install -m 600 "$PKI/pki/ca.crt" "$DIR/smartolt-ca.crt"
 install -m 600 "$PKI/pki/issued/server.crt" "$DIR/smartolt-server.crt"
 install -m 600 "$PKI/pki/private/server.key" "$DIR/smartolt-server.key"
 install -m 600 "$PKI/pki/dh.pem" "$DIR/smartolt-dh.pem"
-touch "$DIR/smartolt-users"
-chmod 600 "$DIR/smartolt-users"
+touch "$DATA/users"
+chmod 600 "$DATA/users"
 
 install -m 755 "$HERE/smartolt-auth.sh" "$DIR/smartolt-auth.sh"
 install -m 755 "$HERE/smartolt-fw.sh" "$DIR/smartolt-fw.sh"
@@ -55,7 +58,7 @@ dev-type tun
 topology subnet
 server 17.0.0.0 255.255.0.0
 # Only logins made by smartolt-vpn (each has a ccd file with its fixed IP) may connect.
-client-config-dir /etc/openvpn/server/ccd
+client-config-dir /var/lib/smartolt-vpn/ccd
 ccd-exclusive
 ca /etc/openvpn/server/smartolt-ca.crt
 cert /etc/openvpn/server/smartolt-server.crt

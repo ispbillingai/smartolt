@@ -6,9 +6,11 @@
 # Usernames are "<site subdomain>-olt<id>". Fixed IPs come from 17.0.1.1 upwards (17.0.0.1 is the server).
 
 set -u
-DIR=/etc/openvpn/server
-USERS="$DIR/smartolt-users"
-CCD="$DIR/ccd"
+# Logins and fixed IPs live under /var/lib: PHP-FPM, and so this helper when a site calls it, runs
+# with /etc read-only (systemd ProtectSystem).
+DATA=/var/lib/smartolt-vpn
+USERS="$DATA/users"
+CCD="$DATA/ccd"
 STATUS=/var/log/openvpn/smartolt-status.log
 
 user="${2:-}"
@@ -32,7 +34,7 @@ case "${1:-}" in
             [ -n "$ip" ] || { echo "no free tunnel IP" >&2; exit 4; }
             echo "ifconfig-push $ip 255.255.0.0" > "$CCD/$user"
         fi
-        tmp=$(mktemp "$DIR/.users.XXXXXX")
+        tmp=$(mktemp "$DATA/.users.XXXXXX")
         awk -v u="$user" '$1 != u' "$USERS" > "$tmp"
         echo "$user $hash" >> "$tmp"
         chmod 600 "$tmp"
@@ -40,7 +42,7 @@ case "${1:-}" in
         awk '/^ifconfig-push/ { print $2 }' "$CCD/$user"
         ;;
     remove)
-        tmp=$(mktemp "$DIR/.users.XXXXXX")
+        tmp=$(mktemp "$DATA/.users.XXXXXX")
         awk -v u="$user" '$1 != u' "$USERS" > "$tmp"
         chmod 600 "$tmp"
         mv "$tmp" "$USERS"
