@@ -248,7 +248,12 @@ while (true) {
             $k = "{$mode}/{$m[1]}/{$m[2]}";
             if (in_array($k, array_column($state['sp'], 0), true)) $out = "  Failure: This configured object has some service virtual ports\n";
             elseif (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";
-            else { unset($state['onts'][$k]); $out = "  Number of ONTs that can be deleted: 1, success: 1\n"; }
+            else {
+                // Still plugged in, so it shows up waiting for authorization again, as on a real OLT.
+                $state['autofind'][] = ["{$mode}/{$m[1]}", $state['onts'][$k][0], 'HWTC', $state['onts'][$k][4] ?: 'EG8145V5'];
+                unset($state['onts'][$k]);
+                $out = "  Number of ONTs that can be deleted: 1, success: 1\n";
+            }
         } elseif (preg_match('/^ont reset (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
             send($c, "  Are you sure to reset the ONT(s)? (y/n)[n]:");
             $a = readline_from($c);
@@ -300,6 +305,25 @@ while (true) {
             $k = "{$mode}/{$m[1]}/{$m[2]}";
             if (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";
             else { $state['onts'][$k][0] = $m[3]; $state['onts'][$k][4] = ''; }
+        } elseif ($cmd === 'display sysuptime') {
+            $out = "  System up time: 3 day 4 hour 33 minute 21 second\n";
+        } elseif ($cmd === 'display temperature 0/7') {
+            $out = "  The temperature of the board: 45C\n";
+        } elseif ($cmd === 'save' && $mode === 'config') {
+            send($c, "{ <cr>|configuration<K>|data<K> }:");
+            readline_from($c);
+            $state['saved'] = ($state['saved'] ?? 0) + 1;
+            $out = "\n  It will take several minutes to save configuration file, please wait...\n  The data of save is completed\n";
+        } elseif (preg_match('/^display current-configuration ont 0\/(\d+)\/(\d+) (\d+)$/', $cmd, $m) && $mode === 'config') {
+            $k = "{$m[1]}/{$m[2]}/{$m[3]}";
+            if (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";
+            else {
+                $o = $state['onts'][$k];
+                $out = "[gpon]\n  <gpon-0/{$m[1]}>\n interface gpon 0/{$m[1]}\n  ont add {$m[2]} {$m[3]} sn-auth \"{$o[0]}\" omci ont-lineprofile-id 10 ont-srvprofile-id 20 desc \"{$o[1]}\"\n";
+                foreach ($state['sp'] as $i => [$sk, $vlan, $gem]) if ($sk === $k) $out .= " service-port {$i} vlan {$vlan} gpon 0/{$m[1]}/{$m[2]} ont {$m[3]} gemport {$gem} multi-service user-vlan {$vlan} tag-transform translate\n";
+            }
+        } elseif (preg_match('/^display board 0\/(\d+)$/', $cmd, $m)) {
+            $out = "  Board Name        : H805GPFD\n  Board Status      : Normal\n  Online/Offline    : Online\n";
         } else {
             $out = "                  ^\n  % Unknown command, the error locates at '^'\n";
         }

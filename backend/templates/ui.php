@@ -1,5 +1,5 @@
 <?php
-// Small pieces of markup every page shares, in the same Tailwind style as the rest of the panel.
+// Small pieces of markup every page shares. Styles live in assets/app.css.
 
 function e($s): string
 {
@@ -11,68 +11,78 @@ function csrf_field(): string
     return '<input type="hidden" name="csrf" value="' . e($_SESSION['csrf'] ?? '') . '">';
 }
 
-/** Page title block at the top of <main>. */
-function page_heading(string $title, string $subtitle = '', string $right = ''): string
+/** Title, description and the buttons on the right, as at the top of each page. */
+function page_title(string $title, string $desc = '', string $buttons = ''): string
 {
-    return '<div class="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-3"><div>'
-        . '<h2 class="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">' . e($title) . '</h2>'
-        . ($subtitle !== '' ? '<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">' . e($subtitle) . '</p>' : '')
-        . '</div>' . $right . '</div>';
+    return '<div class="so-title"><div><h1>' . e($title) . '</h1>' . ($desc !== '' ? '<p>' . e($desc) . '</p>' : '') . '</div>'
+        . ($buttons !== '' ? '<div class="so-actions">' . $buttons . '</div>' : '') . '</div>';
 }
 
-/** One stat card. $tone: brand, emerald, rose, amber, violet, teal. */
-function stat_card(string $label, $value, string $tone, string $iconPath): string
+/** A button or link button. $tone: green, blue, red, orange, grey, dark. */
+function btn(string $label, string $tone, string $href = '', string $icon = '', string $extra = ''): string
 {
-    return '<div class="relative overflow-hidden bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft p-5">'
-        . '<div class="relative flex items-center gap-3">'
-        . '<div class="w-10 h-10 rounded-xl bg-' . $tone . '-50 dark:bg-' . $tone . '-900/40 text-' . $tone . '-600 dark:text-' . $tone . '-300 flex items-center justify-center flex-shrink-0">'
-        . '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' . $iconPath . '"></path></svg></div>'
-        . '<div><p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">' . e($label) . '</p>'
-        . '<h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">' . e($value) . '</h3></div></div></div>';
+    $inner = ($icon !== '' ? '<i class="fa fa-' . $icon . '"></i>' : '') . ($label !== '' ? ' ' . e($label) : '');
+    $cls = 'so-btn so-btn-' . $tone;
+    return $href !== ''
+        ? '<a href="' . e($href) . '" class="' . $cls . '" ' . $extra . '>' . $inner . '</a>'
+        : '<button class="' . $cls . '" ' . $extra . '>' . $inner . '</button>';
 }
 
-/** Rounded pill. $tone: emerald, rose, amber, slate, brand. */
-function badge(string $text, string $tone): string
+/** A one button POST form, for actions on a row. */
+function post_btn(string $action, array $fields, string $label, string $tone, string $icon = '', string $confirm = '', ?string $busy = null, string $to = ''): string
 {
-    return '<span class="inline-flex items-center whitespace-nowrap rounded-full bg-' . $tone . '-50 dark:bg-' . $tone . '-900/40 text-' . $tone . '-700 dark:text-' . $tone . '-300 px-2 py-0.5 text-xs font-medium">' . e($text) . '</span>';
+    $h = '<form method="POST" style="display:inline"' . ($to !== '' ? ' action="' . e($to) . '"' : '')
+        . ($confirm !== '' ? ' data-confirm="' . e($confirm) . '"' : '') . ($busy !== null ? ' data-busy="' . e($busy) . '"' : '') . '>' . csrf_field()
+        . '<input type="hidden" name="do" value="' . e($action) . '">';
+    foreach ($fields as $k => $v) $h .= '<input type="hidden" name="' . e($k) . '" value="' . e($v) . '">';
+    return $h . btn($label, $tone, '', $icon, $label === '' ? 'title="' . e(ucfirst(str_replace('_', ' ', $action))) . '" aria-label="' . e($action) . '"' : '') . '</form>';
 }
 
-function run_state_badge(string $state): string
+/** Small coloured label. $tone: blue, green, red, orange, grey. */
+function badge(string $text, string $tone = ''): string
 {
-    $s = strtolower($state);
-    if ($s === 'online') return badge('Online', 'emerald');
-    if ($s === '') return badge('Not read yet', 'slate');
-    return badge(ucfirst($s), 'rose');
+    return '<span class="so-badge' . ($tone !== '' ? ' b-' . $tone : '') . '">' . e($text) . '</span>';
 }
 
-/**
- * Light level the ONU receives. Huawei GPON: about -8 to -25 dBm is healthy, -25 to -27 is weak,
- * below -27 (or above -8, too hot) causes drops.
- */
-function signal_html($rx): string
-{
-    if ($rx === null || $rx === '') return '<span class="text-slate-400">--</span>';
-    $v = (float)$rx;
-    $tone = ($v < -27 || $v > -8) ? 'text-rose-600 dark:text-rose-400' : ($v < -25 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400');
-    return '<span class="font-semibold whitespace-nowrap ' . $tone . '">' . number_format($v, 2) . ' dBm</span>';
-}
-
-/** Status with the reason an ONU is down, the way the OLT groups it. */
-function status_badge(string $group, string $runState = ''): string
-{
-    switch ($group) {
-        case 'online':     return badge('Online', 'emerald');
-        case 'power_fail': return badge('Power fail', 'amber');
-        case 'los':        return badge('Signal loss (LOS)', 'rose');
-        case 'disabled':   return badge('Disabled', 'slate');
-        case 'other':      return badge('Offline', 'rose');
-    }
-    return run_state_badge($runState);
-}
+const STATUS_NAMES = ['online' => 'Online', 'power_fail' => 'Power fail', 'los' => 'LOS', 'other' => 'Offline', 'disabled' => 'Disabled'];
 
 function status_label(string $group): string
 {
     return ['online' => 'Online', 'power_fail' => 'Power fail', 'los' => 'Signal loss (LOS)', 'disabled' => 'Disabled', 'other' => 'Offline'][$group] ?? 'Not read yet';
+}
+
+const ACTION_LABELS = [
+    'onu.authorize' => 'Authorize ONU', 'onu.reboot' => 'Reboot ONU', 'onu.delete' => 'Delete ONU', 'onu.describe' => 'Rename ONU',
+    'onu.status' => 'Read ONU', 'onu.autofind' => 'Search for ONUs', 'onu.config' => 'Show running config',
+    'onu.service' => 'Change VLAN or speed', 'onu.enable' => 'Enable ONU', 'onu.disable' => 'Disable ONU', 'onu.replace_sn' => 'Replace ONU',
+    'onu.bulk_reboot' => 'Reboot many ONUs', 'onu.bulk_disable' => 'Disable many ONUs', 'onu.bulk_enable' => 'Enable many ONUs', 'onu.bulk_speed' => 'Set speed on many ONUs',
+    'olt.refresh' => 'Read OLT', 'olt.delete' => 'Remove OLT', 'olt.save' => 'Save OLT configuration', 'olt.diag' => 'Diagnostics',
+];
+
+/** "0/1/0 HWTC12345678 authorized" style line for the dashboard Info list. */
+function action_text(array $a): string
+{
+    $done = ['onu.authorize' => 'authorized', 'onu.reboot' => 'rebooted', 'onu.delete' => 'deleted', 'onu.describe' => 'renamed',
+        'onu.service' => 'service changed', 'onu.enable' => 'enabled', 'onu.disable' => 'disabled', 'onu.replace_sn' => 'replaced',
+        'olt.refresh' => 'read', 'olt.save' => 'configuration saved', 'olt.delete' => 'removed', 'onu.status' => 'read live'][$a['action']] ?? (ACTION_LABELS[$a['action']] ?? $a['action']);
+    $who = $a['source'] === 'auto' ? ' by auto action' : ($a['source'] === 'api' ? ' from the billing dashboard' : ($a['source'] === 'cron' ? '' : ($a['user'] !== '' ? ' by ' . $a['user'] : '')));
+    return trim($a['target'] . ' ' . $done) . $who . ($a['ok'] ? '' : ' failed: ' . $a['message']);
+}
+
+/** The status icon of the ONU lists: globe for online and offline, plug for power fail, broken link for LOS. */
+function status_icon(string $group): string
+{
+    $icon = ['online' => 'globe', 'power_fail' => 'plug', 'los' => 'chain-broken', 'other' => 'globe', 'disabled' => 'ban'][$group] ?? 'question-circle';
+    $cls = isset(STATUS_NAMES[$group]) ? $group : 'unknown';
+    return '<i class="fa fa-' . $icon . ' fa-lg st-' . $cls . '" title="' . e(status_label($group)) . '"></i>';
+}
+
+/** Status as a word with its colour, for detail pages and history. */
+function status_badge(string $group, string $runState = ''): string
+{
+    $tone = ['online' => 'green', 'power_fail' => 'blue', 'los' => 'red', 'other' => 'grey', 'disabled' => 'grey'][$group] ?? 'grey';
+    if (!isset(STATUS_NAMES[$group])) return badge($runState !== '' ? ucfirst($runState) : 'Not read yet', 'grey');
+    return badge(status_label($group), $tone);
 }
 
 function signal_level($rx): string
@@ -83,16 +93,23 @@ function signal_level($rx): string
     return $v < OltManager::SIGNAL_WARNING ? 'Warning' : 'Good';
 }
 
+/** Signal bars, value and "dBm" under it, coloured good, warning or critical. */
+function signal_html($rx): string
+{
+    if ($rx === null || $rx === '') return '<span class="so-muted">-</span>';
+    $lvl = strtolower(signal_level($rx));
+    return '<span class="so-signal sig-' . $lvl . '"><i class="fa fa-signal"></i><b>' . number_format((float)$rx, 2) . '</b><small>dBm</small></span>';
+}
+
 function fmt_speed($kbps): string
 {
-    if ($kbps === null || $kbps === '') return '--';
-    $m = (int)$kbps / 1024;
-    return ($m >= 1 ? rtrim(rtrim(number_format($m, 2, '.', ''), '0'), '.') . ' Mbps' : (int)$kbps . ' kbps');
+    if ($kbps === null || $kbps === '') return '-';
+    return OltManager::speedText($kbps);
 }
 
 function fmt_distance($m): string
 {
-    if ($m === null || $m === '') return '--';
+    if ($m === null || $m === '') return '-';
     return (int)$m >= 1000 ? number_format((int)$m / 1000, 2) . ' km' : (int)$m . ' m';
 }
 
@@ -102,16 +119,29 @@ function olt_address(array $o): string
     return ($o['conn_type'] ?? 'direct') === 'vpn' ? 'VPN to ' . $o['lan_ip'] : $o['host'] . ':' . $o['telnet_port'];
 }
 
-/** "5 min ago", "3 h ago", "2 days ago" for a stored time. */
+/** The ONU's place written the way the lists show it: gpon-onu_0/1/0:3. */
+function onu_place(array $u): string
+{
+    return 'gpon-onu_' . (int)$u['frame'] . '/' . (int)$u['slot'] . '/' . (int)$u['port'] . ':' . (int)$u['ont_id'];
+}
+
+/** "5 minutes ago", "3 hours ago", "2 days ago" for a stored time. */
 function ago(?string $at): string
 {
-    if (!$at) return '--';
+    if (!$at) return '-';
     $s = max(0, time() - strtotime($at));
-    if ($s < 90) return 'just now';
-    if ($s < 3600) return round($s / 60) . ' min ago';
-    if ($s < 86400) return round($s / 3600) . ' h ago';
+    if ($s < 60) return $s . ' seconds ago';
+    if ($s < 3600) { $n = (int)round($s / 60); return $n . ($n === 1 ? ' minute ago' : ' minutes ago'); }
+    if ($s < 86400) { $n = (int)round($s / 3600); return $n . ($n === 1 ? ' hour ago' : ' hours ago'); }
     $d = (int)round($s / 86400);
     return $d . ($d === 1 ? ' day ago' : ' days ago');
+}
+
+function when(?string $at): string
+{
+    if (!$at) return '-';
+    $t = strtotime($at);
+    return date('Y-m-d', $t) === date('Y-m-d') ? 'Today ' . date('H:i:s', $t) : date('Y-m-d H:i', $t);
 }
 
 /** <option> list from rows with id and name. */
@@ -124,37 +154,35 @@ function options(array $rows, $selected, string $none = ''): string
     return $html;
 }
 
-/** Tab bar under a page heading: [href => label], $active is the href that is lit. */
-function tabs(array $items, string $active): string
+/** OLT options shown as "1 - Main OLT". */
+function olt_options(array $olts, $selected, string $none = ''): string
 {
-    $html = '<div class="mb-6 flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-700">';
-    foreach ($items as $href => $label) {
-        $on = $href === $active;
-        $html .= '<a href="' . e($href) . '" class="px-4 py-2 -mb-px text-sm font-medium border-b-2 transition '
-            . ($on ? 'border-brand-600 text-brand-700 dark:text-brand-300' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200') . '">' . e($label) . '</a>';
+    $html = $none !== '' ? '<option value="">' . e($none) . '</option>' : '';
+    foreach ($olts as $o) {
+        $html .= '<option value="' . (int)$o['id'] . '"' . ((string)$selected === (string)$o['id'] ? ' selected' : '') . '>' . (int)$o['id'] . ' - ' . e($o['name']) . '</option>';
     }
-    return $html . '</div>';
+    return $html;
 }
 
 function flash_messages(): string
 {
     $html = '';
     foreach ($_SESSION['flash'] ?? [] as [$type, $msg]) {
-        $tone = $type === 'error'
-            ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300'
-            : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300';
-        $html .= '<div class="mb-4 p-3 border rounded-lg text-sm ' . $tone . '">' . e($msg) . '</div>';
+        $html .= '<div class="so-alert ' . ($type === 'error' ? 'a-err' : 'a-ok') . '">' . e($msg) . '</div>';
     }
     unset($_SESSION['flash']);
     return $html;
 }
 
-/** Card wrapper for a table or form. */
-function panel_open(string $title, string $right = ''): string
+function alert(string $msg, string $tone = 'info'): string
 {
-    return '<div class="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft mb-8"><div class="p-6">'
-        . '<div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-3">'
-        . '<h3 class="text-base font-semibold text-slate-800 dark:text-slate-100">' . e($title) . '</h3>' . $right . '</div>';
+    return '<div class="so-alert a-' . $tone . '">' . e($msg) . '</div>';
+}
+
+function panel_open(string $title, string $tools = '', string $icon = ''): string
+{
+    return '<div class="so-panel"><div class="so-panel-h"><span>' . ($icon !== '' ? '<i class="fa fa-' . $icon . '"></i> ' : '') . e($title) . '</span>'
+        . ($tools !== '' ? '<span class="so-tools">' . $tools . '</span>' : '') . '</div><div class="so-panel-b">';
 }
 
 function panel_close(): string
@@ -162,14 +190,72 @@ function panel_close(): string
     return '</div></div>';
 }
 
-const UI_INPUT = 'block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm';
-const UI_LABEL = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
-const UI_BTN = 'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-500';
-const UI_BTN_PRIMARY = UI_BTN . ' bg-brand-600 hover:bg-brand-700 text-white';
-const UI_BTN_GREEN = UI_BTN . ' bg-emerald-600 hover:bg-emerald-700 text-white';
-const UI_BTN_AMBER = UI_BTN . ' bg-amber-500 hover:bg-amber-600 text-white';
-const UI_BTN_RED = UI_BTN . ' bg-rose-600 hover:bg-rose-700 text-white';
-const UI_BTN_GHOST = UI_BTN . ' border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700';
-const UI_TH = 'px-4 py-3 font-medium';
-const UI_TD = 'px-4 py-3';
-const UI_THEAD = 'text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-slate-800/40 border-y border-slate-200 dark:border-slate-700';
+/** Column heading that sorts the table by $key when clicked; keeps the other query parameters. */
+function sort_th(string $label, string $key, string $current): string
+{
+    $q = $_GET;
+    $asc = $current === $key;
+    $q['sort'] = $asc ? $key . '_desc' : $key;
+    $icon = $current === $key ? 'sort-asc' : ($current === $key . '_desc' ? 'sort-desc' : 'sort');
+    return '<a href="?' . e(http_build_query($q)) . '">' . e($label) . ' <i class="fa fa-' . $icon . '"></i></a>';
+}
+
+/** Page links under long tables. */
+function pager(int $total, int $page, int $per): string
+{
+    $pages = (int)ceil($total / $per);
+    if ($pages <= 1) return '';
+    $q = $_GET;
+    $h = '<div class="so-pager">';
+    for ($i = 1; $i <= $pages; $i++) {
+        if ($pages > 12 && $i > 2 && $i < $pages - 1 && abs($i - $page) > 2) { if (abs($i - $page) === 3) $h .= '<a>...</a>'; continue; }
+        $q['page'] = $i;
+        $h .= $i === $page ? '<span>' . $i . '</span>' : '<a href="?' . e(http_build_query($q)) . '">' . $i . '</a>';
+    }
+    return $h . '</div>';
+}
+
+/** Send rows as a CSV download and stop. */
+function csv_download(string $name, array $header, array $rows): void
+{
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $name . '-' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, $header);
+    foreach ($rows as $r) fputcsv($out, $r);
+    exit;
+}
+
+/** Rows of an uploaded CSV file, or throws. */
+function csv_upload(string $field): array
+{
+    $f = $_FILES[$field] ?? null;
+    if (!$f || $f['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($f['tmp_name'])) throw new InvalidArgumentException('Choose a CSV file to import.');
+    if ($f['size'] > 5 * 1024 * 1024) throw new InvalidArgumentException('The file is too big, 5 MB at most.');
+    $rows = [];
+    $h = fopen($f['tmp_name'], 'r');
+    while (($r = fgetcsv($h)) !== false) {
+        if ($rows === [] && isset($r[0])) $r[0] = preg_replace('/^\xEF\xBB\xBF/', '', $r[0]);
+        $rows[] = $r;
+    }
+    fclose($h);
+    if (count($rows) < 2) throw new InvalidArgumentException('The file has no rows under its header.');
+    return $rows;
+}
+
+/** A drawing of an OLT chassis for the dashboard and OLT page. */
+function olt_picture(int $slots = 16): string
+{
+    $w = 150; $h = 130;
+    $svg = '<svg width="' . $w . '" height="' . $h . '" viewBox="0 0 150 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OLT">'
+        . '<rect x="6" y="4" width="138" height="122" rx="4" fill="#8d96a3" stroke="#5c6470"/>'
+        . '<rect x="12" y="10" width="126" height="14" fill="#6c7480"/>'
+        . '<rect x="12" y="110" width="126" height="10" fill="#6c7480"/>';
+    $sw = 126 / $slots;
+    for ($i = 0; $i < $slots; $i++) {
+        $x = 12 + $i * $sw;
+        $svg .= '<rect x="' . round($x + 1, 1) . '" y="28" width="' . round($sw - 2, 1) . '" height="78" fill="#b9c0c9" stroke="#59606b" stroke-width=".6"/>'
+            . '<circle cx="' . round($x + $sw / 2, 1) . '" cy="34" r="1.3" fill="' . ($i % 5 === 0 ? '#2ecc40' : '#59606b') . '"/>';
+    }
+    return $svg . '</svg>';
+}

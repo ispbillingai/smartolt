@@ -104,7 +104,80 @@ class Huawei
             'srv_profiles'  => self::parseProfiles($this->raw('display ont-srvprofile gpon all', true)),
             'vlans'         => self::parseVlans($this->raw('display vlan all', true)),
             'traffic'       => $this->trafficTables(),
+            'uptime'        => self::parseUptime($this->raw('display sysuptime', true)),
+            'temperature'   => $this->temperature($boards),
         ];
+    }
+
+    /** Temperature of the active control board ("45" for 45 C), or '' when the OLT does not say. */
+    private function temperature(array $boards): string
+    {
+        foreach ($boards as $b) {
+            if (stripos($b['name'], 'SCU') !== false && stripos($b['status'], 'active') !== false) {
+                $out = $this->raw("display temperature 0/{$b['slot']}", true);
+                return self::findError($out) === null && preg_match('/(-?\d+)\s*(?:C\b|°)/i', $out, $m) ? $m[1] : '';
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Write the running configuration to flash, so ONUs authorized since the last save survive an
+     * OLT reboot. Huawei asks "{ <cr>|configuration<K>|data<K> }:", which Telnet answers with Enter.
+     */
+    public function saveConfig(): string
+    {
+        $this->leavePort();
+        return $this->raw('save');
+    }
+
+    /** What the OLT holds for one ONT: its ont add line, port settings and service ports. */
+    public function runningConfig(int $frame, int $slot, int $port, int $ontId): string
+    {
+        $this->leavePort();
+        return trim($this->raw("display current-configuration ont {$frame}/{$slot}/{$port} {$ontId}"));
+    }
+
+    /**
+     * Read only commands the Diag page may run. Each takes numbers only, filled in from the form, so
+     * nothing typed by a person reaches the OLT command line.
+     */
+    const DIAG = [
+        'version'   => ['Software version', 'display version', []],
+        'uptime'    => ['Uptime', 'display sysuptime', []],
+        'boards'    => ['Boards', 'display board 0', []],
+        'board'     => ['One board', 'display board {frame}/{slot}', ['frame', 'slot']],
+        'autofind'  => ['Unauthorized ONUs (autofind)', 'display ont autofind all', []],
+        'summary'   => ['ONUs on a PON port', 'display ont info summary {frame}/{slot}/{port}', ['frame', 'slot', 'port']],
+        'onu'       => ['One ONU', 'display ont info {frame} {slot} {port} {ont}', ['frame', 'slot', 'port', 'ont']],
+        'optical'   => ['Optical levels on a PON port', 'display ont optical-info {port} all', ['frame', 'slot', 'port'], true],
+        'services'  => ['Service ports of a PON port', 'display service-port port {frame}/{slot}/{port}', ['frame', 'slot', 'port']],
+        'config'    => ['Running config of one ONU', 'display current-configuration ont {frame}/{slot}/{port} {ont}', ['frame', 'slot', 'port', 'ont']],
+        'traffic'   => ['Speed tables', 'display traffic table ip from-index 0', []],
+        'vlans'     => ['VLANs', 'display vlan all', []],
+        'lineprof'  => ['Line profiles', 'display ont-lineprofile gpon all', []],
+        'srvprof'   => ['Service profiles', 'display ont-srvprofile gpon all', []],
+    ];
+
+    /** Run one DIAG command with numeric parameters and return its output as printed. */
+    public function diag(string $key, array $params): string
+    {
+        if (!isset(self::DIAG[$key])) throw new InvalidArgumentException('Unknown check.');
+        [, $cmd, $need] = self::DIAG[$key];
+        $inPort = !empty(self::DIAG[$key][3]);
+        foreach ($need as $p) {
+            $v = $params[$p] ?? '';
+            if (!is_numeric($v) || (int)$v < 0 || (int)$v > 255) throw new InvalidArgumentException('Fill in ' . $p . ' as a number.');
+            $cmd = str_replace('{' . $p . '}', (string)(int)$v, $cmd);
+        }
+        if ($inPort) {
+            $this->enterPort((int)$params['frame'], (int)$params['slot']);
+        } else {
+            $this->leavePort();
+        }
+        $out = $this->raw($cmd, true);
+        $this->leavePort();
+        return rtrim($out);
     }
 
     /**
@@ -305,6 +378,14 @@ class Huawei
         preg_match('/VERSION\s*:\s*(\S+)/i', $out, $v);
         preg_match('/PRODUCT\s*:\s*(\S+)/i', $out, $p);
         return ['version' => $v[1] ?? '', 'product' => $p[1] ?? ''];
+    }
+
+    /** "System up time: 120 day 5 hour 33 minute 21 second" as "120d 05:33". */
+    public static function parseUptime(string $out): string
+    {
+        if (!preg_match('/up\s*time\s*:?\s*(?:(\d+)\s*days?)?[,\s]*(?:(\d+)\s*hours?)?[,\s]*(?:(\d+)\s*min)?/i', $out, $m) || !isset($m[1])) return '';
+        $d = (int)($m[1] ?? 0);
+        return ($d ? $d . 'd ' : '') . sprintf('%02d:%02d', (int)($m[2] ?? 0), (int)($m[3] ?? 0));
     }
 
     public static function parseBoards(string $out): array

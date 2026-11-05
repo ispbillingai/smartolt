@@ -42,119 +42,29 @@ $stmt = $db->prepare("SELECT username, timezone, display_name, company_name, ema
 $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$pageTitle = 'Settings';
+
+$pageTitle = 'General';
 include __DIR__ . '/backend/templates/header.php';
-include __DIR__ . '/backend/templates/sidebar.php';
 ?>
-<!-- Main Content -->
-<div class="flex-1 pt-20 sm:pt-16 ml-0 md:ml-64 min-h-screen flex flex-col">
-    <main class="p-4 md:p-8 flex-1">
-        <div class="mb-6">
-            <h2 class="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Settings</h2>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage your profile, preferences, and security.</p>
+<?php echo page_title('General', 'Your account on this SmartOLT: name, company, time zone and password.'); ?>
+<?php if (isset($_SESSION['success_message'])): ?><div class="so-alert a-ok"><?php echo e($_SESSION['success_message']); unset($_SESSION['success_message']); ?></div><?php endif; ?>
+<?php if (isset($error)): ?><div class="so-alert a-err"><?php echo e($error); ?></div><?php endif; ?>
+<form method="POST" class="so-panel" style="max-width:720px">
+    <div class="so-panel-b">
+        <?php echo csrf_field(); ?>
+        <div class="so-grid2">
+            <div class="so-field"><label class="so-label" for="display_name">Display name</label><input type="text" name="display_name" id="display_name" value="<?php echo e($user['display_name'] ?? ''); ?>" class="so-input" required></div>
+            <div class="so-field"><label class="so-label" for="username">Username</label><input type="text" id="username" value="<?php echo e($user['username']); ?>" class="so-input" readonly style="opacity:.7"></div>
+            <div class="so-field"><label class="so-label" for="company_name">Company name</label><input type="text" name="company_name" id="company_name" value="<?php echo e($user['company_name'] ?? ''); ?>" class="so-input"></div>
+            <div class="so-field"><label class="so-label" for="timezone">Time zone</label>
+                <select name="timezone" id="timezone" class="so-select">
+                    <?php foreach (DateTimeZone::listIdentifiers() as $tz): ?><option value="<?php echo e($tz); ?>" <?php echo $tz === ($user['timezone'] ?? 'Africa/Nairobi') ? 'selected' : ''; ?>><?php echo e($tz); ?></option><?php endforeach; ?>
+                </select></div>
+            <div class="so-field"><label class="so-label" for="new_password">New password</label><input type="password" name="new_password" id="new_password" class="so-input" placeholder="Leave blank to keep the current one" autocomplete="new-password"></div>
+            <div class="so-field"><label class="so-label" for="confirm_password">Confirm new password</label><input type="password" name="confirm_password" id="confirm_password" class="so-input" autocomplete="new-password"></div>
         </div>
-
-        <?php if (isset($_SESSION['success_message'])): ?>
-            <div class="mb-4 p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300 rounded-xl flex items-center gap-2">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                <span><?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?></span>
-            </div>
-        <?php endif; ?>
-
-        <?php if (isset($error)): ?>
-            <div class="mb-4 p-4 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300 rounded-xl flex items-center gap-2">
-                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                <span><?php echo htmlspecialchars($error); ?></span>
-            </div>
-        <?php endif; ?>
-
-        <div class="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-soft p-6 md:p-8 max-w-3xl">
-            <form method="POST" class="space-y-6">
-                <?php echo csrf_field(); ?>
-                <!-- Display Name -->
-                <div>
-                    <label for="display_name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Display Name</label>
-                    <input type="text" name="display_name" id="display_name"
-                           value="<?php echo htmlspecialchars($user['display_name'] ?? ''); ?>"
-                           class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm" required>
-                </div>
-
-                <!-- Username (read-only) -->
-                <div>
-                    <label for="username" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Username</label>
-                    <input type="text" name="username" id="username"
-                           value="<?php echo htmlspecialchars($user['username']); ?>"
-                           class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 px-3 py-2 shadow-sm cursor-not-allowed text-sm" readonly>
-                </div>
-
-                <!-- Company Name -->
-                <div>
-                    <label for="company_name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Company Name</label>
-                    <input type="text" name="company_name" id="company_name"
-                           value="<?php echo htmlspecialchars($user['company_name'] ?? ''); ?>"
-                           class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm">
-                </div>
-
-                <!-- Timezone -->
-                <div>
-                    <label for="timezone" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Timezone</label>
-                    <select name="timezone" id="timezone"
-                            class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm">
-                        <?php
-                        $timezones = DateTimeZone::listIdentifiers();
-                        foreach ($timezones as $tz) {
-                            $selected = ($tz === ($user['timezone'] ?? 'Africa/Nairobi')) ? 'selected' : '';
-                            echo "<option value=\"$tz\" $selected>$tz</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-
-                <!-- Email Notifications -->
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Email Notifications</label>
-                    <label class="inline-flex items-center gap-2">
-                        <input type="checkbox" name="email_notifications"
-                               class="rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-brand-600 shadow-sm focus:ring-2 focus:ring-brand-500/30 focus:ring-offset-0"
-                               <?php echo ($user['email_notifications'] ?? 0) ? 'checked' : ''; ?>>
-                        <span class="text-sm text-slate-600 dark:text-slate-400">Enable email notifications when an OLT or ONU goes offline</span>
-                    </label>
-                </div>
-
-                <!-- Theme Selection -->
-                <div>
-                    <label for="theme" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Theme (saved preference)</label>
-                    <select name="theme" id="theme"
-                            class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm">
-                        <option value="light" <?php echo ($user['theme'] ?? 'light') === 'light' ? 'selected' : ''; ?>>Light</option>
-                        <option value="dark" <?php echo ($user['theme'] ?? 'light') === 'dark' ? 'selected' : ''; ?>>Dark</option>
-                    </select>
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Tip: you can also flip the theme any time using the toggle in the top bar.</p>
-                </div>
-
-                <!-- New Password -->
-                <div>
-                    <label for="new_password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">New Password <span class="font-normal text-slate-400 dark:text-slate-500">(leave blank to keep current)</span></label>
-                    <input type="password" name="new_password" id="new_password"
-                           class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm">
-                </div>
-
-                <!-- Confirm Password -->
-                <div>
-                    <label for="confirm_password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Confirm New Password</label>
-                    <input type="password" name="confirm_password" id="confirm_password"
-                           class="block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-3 py-2 shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:outline-none transition text-sm">
-                </div>
-
-                <div class="pt-2">
-                    <button type="submit"
-                            class="inline-flex justify-center rounded-lg bg-brand-600 hover:bg-brand-700 py-2.5 px-5 text-sm font-medium text-white shadow-glow focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition">
-                        Save Changes
-                    </button>
-                </div>
-            </form>
-        </div>
-    </main>
-
-
-    <?php include __DIR__ . '/backend/templates/footer.php'; ?>
+        <p class="so-muted" style="font-size:14px;margin-top:0">Dark or light look: the half moon icon in the top bar.</p>
+        <button type="submit" class="so-btn so-btn-blue">Save changes</button>
+    </div>
+</form>
+<?php include __DIR__ . '/backend/templates/footer.php'; ?>

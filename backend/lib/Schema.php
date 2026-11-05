@@ -5,7 +5,7 @@
 
 class Schema
 {
-    const VERSION = 3;
+    const VERSION = 4;
 
     public static function ensure(PDO $db): void
     {
@@ -200,5 +200,56 @@ class Schema
         ] as $col => $def) {
             self::addColumn($db, 'olts', $col, $def);
         }
+    }
+
+    /**
+     * Sectors, authorization presets, auto actions, ONUs added for later authorization, PON port
+     * history, who did each action, OLT uptime, and the speed and service ports as the OLT has them
+     * (for the config mismatch report).
+     */
+    private static function v4(PDO $db): void
+    {
+        $t = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+        $db->exec("CREATE TABLE IF NOT EXISTS `sectors` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `name` varchar(100) NOT NULL, `comment` varchar(255) NOT NULL DEFAULT '',
+            `created_at` datetime NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `name` (`name`)) {$t}");
+        self::addColumn($db, 'odbs', 'sector_id', 'int unsigned DEFAULT NULL');
+        $db->exec("CREATE TABLE IF NOT EXISTS `presets` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `name` varchar(100) NOT NULL,
+            `onu_type_id` int unsigned DEFAULT NULL, `mode` varchar(10) NOT NULL DEFAULT 'bridge', `vlan` smallint unsigned DEFAULT NULL,
+            `speed_profile_id` int unsigned DEFAULT NULL, `zone_id` int unsigned DEFAULT NULL, `sector_id` int unsigned DEFAULT NULL,
+            `line_profile` int DEFAULT NULL, `srv_profile` int DEFAULT NULL, `gemport` smallint unsigned NOT NULL DEFAULT 1,
+            `created_at` datetime NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `name` (`name`)) {$t}");
+        $db->exec("CREATE TABLE IF NOT EXISTS `auto_actions` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `olt_id` int unsigned DEFAULT NULL, `pon` varchar(20) NOT NULL DEFAULT '',
+            `onu_type_id` int unsigned DEFAULT NULL, `preset_id` int unsigned NOT NULL, `enabled` tinyint(1) NOT NULL DEFAULT 1,
+            `created_at` datetime NOT NULL, PRIMARY KEY (`id`)) {$t}");
+        $db->exec("CREATE TABLE IF NOT EXISTS `pending_onus` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `sn` varchar(16) NOT NULL, `olt_id` int unsigned DEFAULT NULL,
+            `preset_id` int unsigned DEFAULT NULL, `description` varchar(60) NOT NULL DEFAULT '', `customer_ref` varchar(100) NOT NULL DEFAULT '',
+            `zone_id` int unsigned DEFAULT NULL, `sector_id` int unsigned DEFAULT NULL, `odb_id` int unsigned DEFAULT NULL,
+            `odb_port` tinyint unsigned DEFAULT NULL, `address` varchar(255) NOT NULL DEFAULT '',
+            `last_error` varchar(500) NOT NULL DEFAULT '', `created_at` datetime NOT NULL,
+            PRIMARY KEY (`id`), UNIQUE KEY `sn` (`sn`)) {$t}");
+        $db->exec("CREATE TABLE IF NOT EXISTS `pon_stats` (
+            `olt_id` int unsigned NOT NULL, `pon` varchar(20) NOT NULL, `at` datetime NOT NULL,
+            `total` smallint unsigned NOT NULL, `online` smallint unsigned NOT NULL, KEY `olt_at` (`olt_id`, `at`)) {$t}");
+        self::addColumn($db, 'actions', 'user', "varchar(60) NOT NULL DEFAULT ''");
+        foreach ([
+            'sector_id'     => 'int unsigned DEFAULT NULL',
+            'olt_down_kbps' => 'int unsigned DEFAULT NULL',
+            'olt_up_kbps'   => 'int unsigned DEFAULT NULL',
+            'service_ports' => 'smallint unsigned DEFAULT NULL',
+        ] as $col => $def) {
+            self::addColumn($db, 'onus', $col, $def);
+        }
+        foreach ([
+            'uptime'      => "varchar(40) NOT NULL DEFAULT ''",
+            'temperature' => "varchar(20) NOT NULL DEFAULT ''",
+            'saved_at'    => 'datetime DEFAULT NULL',
+        ] as $col => $def) {
+            self::addColumn($db, 'olts', $col, $def);
+        }
+        $db->exec("INSERT IGNORE INTO meta (k, v) VALUES ('auto_actions', 'on')");
     }
 }

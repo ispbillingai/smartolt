@@ -20,6 +20,11 @@ foreach ($due as $olt) {
     try {
         $s = $mgr->refresh($olt);
         printf("%s olt %d %s: %d onus, %d online, %d waiting, %d removed, %.1fs\n", OltManager::now(), $olt['id'], $olt['name'], $s['onus'], $s['online'], $s['waiting'], $s['removed'], microtime(true) - $t);
+        // Waiting ONUs that an auto action or the later list covers are authorized now.
+        $a = $mgr->runAuto($mgr->olt((int)$olt['id']));
+        if ($a['done'] || $a['failed']) {
+            printf("%s olt %d auto: %d authorized%s\n", OltManager::now(), $olt['id'], $a['done'], $a['failed'] ? ', failed: ' . implode('; ', $a['failed']) : '');
+        }
     } catch (Throwable $e) {
         printf("%s olt %d %s: FAILED %s\n", OltManager::now(), $olt['id'], $olt['name'], $e->getMessage());
     }
