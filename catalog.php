@@ -36,12 +36,15 @@ $kinds = [
     ],
     'types' => [
         'title' => 'ONU types', 'one' => 'ONU type', 'kind' => 'type', 'rows' => $types, 'save' => [$mgr, 'saveOnuType'],
-        'desc' => 'ONU models. When an ONU is authorized, the type whose model matches what the OLT reports is picked for you.',
-        'fields' => ['name' => ['Model', 'text'], 'eth_ports' => ['Ethernet ports', 'number', 1], 'pots_ports' => ['VoIP ports', 'number', 0],
-            'wifi' => ['WiFi', 'check'], 'catv' => ['CATV', 'check'], 'default_mode' => ['Usual mode', 'mode']],
-        'cols' => ['ONU type' => 'name', 'Ethernet' => 'eth_ports', 'VoIP' => 'pots_ports', 'WiFi' => ['wifi', function ($r) { return $r['wifi'] ? 'Yes' : 'No'; }],
-            'CATV' => ['catv', function ($r) { return $r['catv'] ? 'Yes' : 'No'; }], 'Mode' => ['default_mode', function ($r) { return badge($r['default_mode'] === 'router' ? 'Router' : 'Bridge', 'blue'); }],
-            'ONUs' => ['onu_count', $onusLink('type')]],
+        'desc' => 'Define the ONU models, their PON type and their ports. SmartOLT uses the ONU type to set up the ONU on the OLT, and picks it from the model the OLT reports.',
+        'fields' => ['name' => ['ONU type', 'text'], 'eth_ports' => ['Ethernet ports', 'number', 4], 'wifi' => ['WiFi SSIDs', 'number', 0],
+            'pots_ports' => ['VoIP ports', 'number', 0], 'catv' => ['CATV', 'check'], 'allow_custom' => ['Allow custom profiles', 'check'],
+            'capability' => ['Capability', ['select', [['id' => 'bridge', 'name' => 'Bridging'], ['id' => 'both', 'name' => 'Bridging/Routing']], '']],
+            'default_mode' => ['Usual mode', 'mode']],
+        'cols' => ['PON type' => ['pon', function () { return 'GPON'; }], 'Channels' => ['chan', function () { return 'G'; }], 'ONU type' => 'name',
+            'ONUs' => ['onu_count', $onusLink('type')], 'ETH ports' => 'eth_ports', 'WiFi' => 'wifi', 'VoIP ports' => 'pots_ports', 'CATV' => 'catv',
+            'Allow custom profiles' => ['allow_custom', function ($r) { return $r['allow_custom'] ? 'Yes' : 'No'; }],
+            'Capability' => ['capability', function ($r) { return $r['capability'] === 'bridge' ? 'Bridging' : 'Bridging/Routing'; }]],
     ],
     'speeds' => [
         'title' => 'Speed profiles', 'one' => 'Speed profile', 'kind' => 'speed', 'rows' => $speeds, 'save' => [$mgr, 'saveSpeedProfile'],
@@ -150,7 +153,7 @@ foreach ($K['cols'] as $label => $c) $sortKeys[is_array($c) ? $c[0] : $c] = true
 $sort = (string)($_GET['sort'] ?? 'name');
 $key = preg_replace('/_desc$/', '', $sort);
 if (isset($sortKeys[$key])) {
-    usort($rows, function ($a, $b) use ($key) { return is_numeric($a[$key]) && is_numeric($b[$key]) ? $a[$key] <=> $b[$key] : strnatcasecmp((string)$a[$key], (string)$b[$key]); });
+    usort($rows, function ($a, $b) use ($key) { $x = $a[$key] ?? ''; $y = $b[$key] ?? ''; return is_numeric($x) && is_numeric($y) ? $x <=> $y : strnatcasecmp((string)$x, (string)$y); });
     if ($sort !== $key) $rows = array_reverse($rows);
 }
 
@@ -185,7 +188,7 @@ $buttons .= btn('Export', 'grey', $self . '&export=csv', 'upload') . '<button ty
             <?php $first = true; foreach ($K['cols'] as $label => $c):
                 $f = is_array($c) ? $c[0] : $c;
                 $cell = is_array($c) && isset($c[1]) ? $c[1]($r) : e($r[$f] ?? ''); ?>
-                <td><?php if ($first): ?><a href="#" class="so-edit" data-row="<?php echo e(json_encode($formValues($r))); ?>"><?php echo $cell; ?></a><?php else: echo $cell; endif; ?></td>
+                <td><?php if ($f === 'name'): ?><a href="#" class="so-edit" data-row="<?php echo e(json_encode($formValues($r))); ?>"><?php echo $cell; ?></a><?php else: echo $cell; endif; ?></td>
             <?php $first = false; endforeach; ?>
             <td class="center"><?php echo post_btn('delete', ['id' => $r['id']], '', 'red', 'trash',
                 'Remove ' . $r['name'] . '?' . ((int)($r['onu_count'] ?? 0) ? ' ' . (int)$r['onu_count'] . ' ONUs lose this label; nothing changes on the OLT.' : '')); ?></td>

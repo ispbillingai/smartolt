@@ -5,7 +5,7 @@
 
 class Schema
 {
-    const VERSION = 4;
+    const VERSION = 5;
 
     public static function ensure(PDO $db): void
     {
@@ -251,5 +251,55 @@ class Schema
             self::addColumn($db, 'olts', $col, $def);
         }
         $db->exec("INSERT IGNORE INTO meta (k, v) VALUES ('auto_actions', 'on')");
+    }
+
+    /**
+     * Network events (alarms that open and resolve), ONU notes and tickets, the IP each action came
+     * from, and ONU types described the way the ONU types page lists them.
+     */
+    private static function v5(PDO $db): void
+    {
+        $t = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+        $db->exec("CREATE TABLE IF NOT EXISTS `network_events` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `olt_id` int unsigned DEFAULT NULL, `type` varchar(20) NOT NULL,
+            `ekey` varchar(100) NOT NULL, `severity` varchar(10) NOT NULL DEFAULT 'critical', `title` varchar(100) NOT NULL,
+            `message` varchar(500) NOT NULL DEFAULT '', `started_at` datetime NOT NULL, `updated_at` datetime NOT NULL,
+            `resolved_at` datetime DEFAULT NULL, `muted` tinyint(1) NOT NULL DEFAULT 0,
+            PRIMARY KEY (`id`), KEY `open` (`ekey`, `resolved_at`)) {$t}");
+        $db->exec("CREATE TABLE IF NOT EXISTS `onu_notes` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `onu_id` int unsigned NOT NULL, `note` text NOT NULL,
+            `user` varchar(60) NOT NULL DEFAULT '', `created_at` datetime NOT NULL, PRIMARY KEY (`id`), KEY `onu` (`onu_id`)) {$t}");
+        $db->exec("CREATE TABLE IF NOT EXISTS `tickets` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT, `onu_id` int unsigned DEFAULT NULL, `subject` varchar(150) NOT NULL,
+            `description` text NOT NULL, `type` varchar(20) NOT NULL DEFAULT 'support', `priority` varchar(10) NOT NULL DEFAULT 'normal',
+            `assignee` varchar(60) NOT NULL DEFAULT '', `start_at` datetime DEFAULT NULL, `duration_min` smallint unsigned NOT NULL DEFAULT 60,
+            `status` varchar(10) NOT NULL DEFAULT 'open', `user` varchar(60) NOT NULL DEFAULT '', `created_at` datetime NOT NULL,
+            PRIMARY KEY (`id`), KEY `onu` (`onu_id`)) {$t}");
+        self::addColumn($db, 'actions', 'ip', "varchar(45) NOT NULL DEFAULT ''");
+        self::addColumn($db, 'onus', 'vip', 'tinyint(1) NOT NULL DEFAULT 0');
+        self::addColumn($db, 'onus', 'contact', "varchar(100) NOT NULL DEFAULT ''");
+        self::addColumn($db, 'onus', 'preset_id', 'int unsigned DEFAULT NULL');
+        foreach (['slot' => 'tinyint unsigned DEFAULT NULL', 'port' => 'tinyint unsigned DEFAULT NULL', 'onu_type_id' => 'int unsigned DEFAULT NULL',
+                  'mode' => "varchar(10) NOT NULL DEFAULT ''", 'vlan' => 'smallint unsigned DEFAULT NULL', 'speed_profile_id' => 'int unsigned DEFAULT NULL',
+                  'lat' => 'decimal(10,7) DEFAULT NULL', 'lng' => 'decimal(10,7) DEFAULT NULL'] as $col => $def) {
+            self::addColumn($db, 'pending_onus', $col, $def);
+        }
+        self::addColumn($db, 'onu_types', 'capability', "varchar(10) NOT NULL DEFAULT 'both'");
+        self::addColumn($db, 'onu_types', 'allow_custom', 'tinyint(1) NOT NULL DEFAULT 1');
+        $db->exec("UPDATE onu_types SET capability='bridge' WHERE default_mode='bridge' AND wifi=0");
+        // The common Huawei and ZTE models, as SmartOLT lists them: [model, LAN, VoIP, WiFi SSIDs, CATV, capability]
+        $ins = $db->prepare('INSERT IGNORE INTO onu_types (name, eth_ports, pots_ports, wifi, catv, default_mode, capability) VALUES (?,?,?,?,?,?,?)');
+        foreach ([
+            ['EG8021V5', 2, 0, 8, 0, 'router', 'both'], ['EG8041V5', 4, 0, 8, 0, 'router', 'both'], ['EG8143A5', 4, 1, 4, 1, 'router', 'both'],
+            ['EG8145X6-10', 4, 1, 8, 0, 'router', 'both'], ['F6600P', 4, 1, 8, 0, 'router', 'both'], ['GN630V', 4, 1, 8, 0, 'router', 'both'],
+            ['HG8120C', 2, 1, 0, 0, 'bridge', 'both'], ['HG8145V5', 4, 1, 8, 0, 'router', 'both'], ['HG8145V5V3', 4, 1, 8, 0, 'router', 'both'],
+            ['HG8240H', 4, 2, 0, 0, 'bridge', 'both'], ['HG8240T', 4, 2, 0, 0, 'bridge', 'both'], ['HG8242', 4, 2, 4, 1, 'router', 'both'],
+            ['HG8242H', 4, 2, 4, 1, 'router', 'both'], ['HG8245H5', 4, 2, 4, 0, 'router', 'both'], ['HG8546V5', 4, 1, 8, 0, 'router', 'both'],
+            ['F670', 4, 1, 4, 0, 'router', 'both'], ['F680', 4, 2, 8, 0, 'router', 'both'],
+        ] as $row) {
+            $ins->execute($row);
+        }
+        // "wifi" now counts SSIDs; older rows stored 1 for "has WiFi".
+        $db->exec('UPDATE onu_types SET wifi=4 WHERE wifi=1');
     }
 }

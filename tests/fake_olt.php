@@ -322,6 +322,24 @@ while (true) {
                 $out = "[gpon]\n  <gpon-0/{$m[1]}>\n interface gpon 0/{$m[1]}\n  ont add {$m[2]} {$m[3]} sn-auth \"{$o[0]}\" omci ont-lineprofile-id 10 ont-srvprofile-id 20 desc \"{$o[1]}\"\n";
                 foreach ($state['sp'] as $i => [$sk, $vlan, $gem]) if ($sk === $k) $out .= " service-port {$i} vlan {$vlan} gpon 0/{$m[1]}/{$m[2]} ont {$m[3]} gemport {$gem} multi-service user-vlan {$vlan} tag-transform translate\n";
             }
+        } elseif (preg_match('/^display ont version (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
+            $k = "{$mode}/{$m[1]}/{$m[2]}";
+            $out = isset($state['onts'][$k]) ? "  -----------------------------------------------------------------------------\n  F/S/P                    : 0/{$mode}/{$m[1]}\n  ONT-ID                   : {$m[2]}\n"
+                . "  Vendor-ID                : HWTC\n  ONT Version              : 10C7.A\n  Equipment-ID             : " . ($state['onts'][$k][4] ?: 'EG8145V5') . "\n  Main Software Version    : V5R019C00S050\n"
+                : "  Failure: The ONT does not exist\n";
+        } elseif (preg_match('/^ont factory-setting-restore (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
+            send($c, "  Are you sure to restore the factory settings of the ONT(s)? (y/n)[n]:");
+            $a = readline_from($c);
+            send($c, $a . "\n");
+            if (!isset($state['onts']["{$mode}/{$m[1]}/{$m[2]}"])) $out = "  Failure: The ONT does not exist\n";
+        } elseif (preg_match('/^vlan (\d+) smart$/', $cmd, $m) && $mode === 'config') {
+            $state['vlans'][(int)$m[1]] = true;
+        } elseif (preg_match('/^vlan desc (\d+) description "[^"]*"$/', $cmd) && $mode === 'config') {
+        } elseif (preg_match('/^undo vlan (\d+)$/', $cmd, $m) && $mode === 'config') {
+            send($c, "  Are you sure to delete the VLAN(s)? (y/n)[n]:");
+            $a = readline_from($c);
+            send($c, $a . "\n");
+            unset($state['vlans'][(int)$m[1]]);
         } elseif (preg_match('/^display board 0\/(\d+)$/', $cmd, $m)) {
             $out = "  Board Name        : H805GPFD\n  Board Status      : Normal\n  Online/Offline    : Online\n";
         } else {

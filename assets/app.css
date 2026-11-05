@@ -267,3 +267,48 @@ html.light .so-alert.a-info { background: #e8f1ff; color: #17427a; }
 .so-kv { display: flex; justify-content: space-between; border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; font-weight: 700; }
 .hidden { display: none !important; }
 #soConfirm { z-index: 75; }
+
+/* ----- Round 2: layouts seen on the ONU page, forms, OLT tabs, events ----- */
+.so-btn-yellow { background: #f0ad1c; }
+.so-btn-teal { background: #17a2b8; }
+.so-kvl { display: grid; grid-template-columns: 170px 1fr; gap: 3px 12px; font-size: 14px; margin: 0; }
+.so-kvl dt { text-align: right; font-weight: 700; }
+.so-kvl dd { margin: 0; color: var(--link); }
+.so-kvl dd i { color: var(--muted); }
+.so-form { max-width: 980px; }
+.so-row { display: grid; grid-template-columns: 210px 1fr; gap: 12px; align-items: center; margin-bottom: 12px; }
+.so-row > label { text-align: right; font-weight: 700; font-size: 14px; }
+.so-row .so-help { grid-column: 2; margin-top: -6px; }
+@media (max-width: 700px) { .so-row { grid-template-columns: 1fr; } .so-row > label { text-align: left; } .so-kvl { grid-template-columns: 130px 1fr; } }
+.so-section { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px 18px; margin-bottom: 16px; }
+.so-section > h3 { margin: 0 0 12px; font-size: 15px; }
+.so-pagehead { display: flex; justify-content: space-between; align-items: center; margin: 8px 0 6px; }
+.so-pagehead h1 { font-size: 24px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.so-pagehead h1 .fa { background: var(--head); border-radius: 4px; padding: 6px 8px; font-size: 16px; }
+.so-tabbar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin: 10px 0 14px; }
+.so-tabbar a { padding: 8px 12px; color: var(--muted); font-size: 14px; border-radius: 4px 4px 0 0; }
+.so-tabbar a.on { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-bottom-color: var(--panel); margin-bottom: -1px; }
+.so-tabbar a:hover { text-decoration: none; color: var(--text); }
+.so-pills { display: inline-flex; border: 1px solid var(--input-border); border-radius: 4px; overflow: hidden; }
+.so-pills a { padding: 6px 12px; font-size: 14px; font-weight: 700; color: var(--text); background: var(--input); border-right: 1px solid var(--input-border); }
+.so-pills a:last-child { border-right: 0; }
+.so-pills a.on { background: var(--blue); color: #fff; }
+.so-pills a:hover { text-decoration: none; }
+.so-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 6px; margin: 14px 0; }
+.so-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; min-height: 64px; font-size: 12px; color: var(--muted); }
+.so-tile b { display: block; font-size: 20px; color: var(--text); font-weight: 400; }
+.so-tile.t-red b { color: var(--red); }
+.so-tile.t-orange b { color: var(--orange); }
+.so-stat { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; min-width: 160px; }
+.so-stat .fa { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--head); }
+.so-stat small { display: block; font-size: 11px; color: var(--muted); }
+.so-stat b { font-size: 20px; font-weight: 400; }
+.so-rx { display: flex; gap: 8px; }
+.so-rx div { flex: 1; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font-size: 12px; color: var(--muted); }
+.so-rx b { display: block; font-size: 16px; color: var(--text); }
+.so-statusbox { border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; min-height: 30px; font-size: 14px; }
+.so-graph-empty { border: 1px solid var(--border); border-radius: 4px; height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; gap: 8px; }
+.so-graph-empty .fa { font-size: 52px; opacity: .35; }
+.so-footer { text-align: center; color: var(--muted); font-size: 13px; padding: 26px 0 18px; }
+.so-footer b { color: var(--link); font-weight: 400; }
+.so-mini-map { height: 180px; border-radius: 4px; border: 1px solid var(--border); margin-top: 8px; }

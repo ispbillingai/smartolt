@@ -18,7 +18,7 @@ $navMenu = [
     ['Graphs', 'graphs.php'],
     ['Events', 'events.php'],
     ['Diag', 'diag.php'],
-    ['Tasks', ['Task history' => 'tasks.php', 'Auto actions' => 'auto_actions.php', 'Bulk actions' => 'onus.php?select=1']],
+    ['Tasks', ['Tickets' => 'tickets.php', 'New ticket' => 'tickets.php?add=1', 'Task history' => 'tasks.php', 'Auto actions' => 'auto_actions.php', 'Bulk actions' => 'onus.php?select=1']],
     ['Reports', [
         'Authorizations' => 'reports.php?r=auth', 'Export' => 'reports.php?r=export', 'Import' => 'reports.php?r=import',
         'Traffic usage' => 'reports.php?r=traffic', 'WiFi signal' => 'reports.php?r=wifi', 'ONU status changes' => 'reports.php?r=status',
@@ -49,7 +49,7 @@ $navOlts = $mgr->olts();
         };
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link rel="stylesheet" href="assets/app.css?v=4">
+    <link rel="stylesheet" href="assets/app.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -76,7 +76,8 @@ $navOlts = $mgr->olts();
             <?php endforeach; ?>
             <li><a href="#" data-open="soSave" title="Save the OLT configuration"><i class="fa fa-floppy-o"></i></a></li>
             <li><a href="#" id="soTheme" title="Dark or light"><i class="fa fa-adjust"></i></a></li>
-            <li class="<?php echo $navIsOn(['help.php']) ? 'on' : ''; ?>"><a href="help.php" title="User guide"><i class="fa fa-book"></i></a></li>
+            <li class="<?php echo $navIsOn(['help.php']) ? 'on' : ''; ?>"><button type="button" data-drop title="User guide"><i class="fa fa-book"></i></button>
+                <div class="so-drop"><a href="help.php">Manual</a><a class="so-muted" style="font-size:12px;pointer-events:none">Guided tours</a><a href="help.php#start">Add an OLT</a><a href="help.php#authorize">Authorize an ONU</a></div></li>
             <li class="<?php echo $navIsOn(['settings.php']) ? 'on' : ''; ?>"><a href="settings.php" title="<?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>"><i class="fa fa-user"></i></a></li>
             <li><a href="logout.php"><i class="fa fa-power-off"></i> Log out</a></li>
         </ul>

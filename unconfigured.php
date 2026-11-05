@@ -135,29 +135,6 @@ include __DIR__ . '/backend/templates/header.php';
 <p><?php echo btn('Authorization Presets', 'blue', 'catalog.php?k=presets', 'list'); ?></p>
 <p class="so-muted" style="font-size:14px;margin-top:-6px"><i class="fa fa-info-circle"></i> Manage presets for quick ONU authorization</p>
 <hr class="so-hr">
-<button type="button" class="so-btn so-btn-green" data-open="laterModal">Add ONU for later authorization</button>
+<a href="later.php" class="so-btn so-btn-green">Add ONU for later authorization</a>
 
-<div class="so-modal" id="laterModal">
-    <form method="POST" class="so-modal-box wide">
-        <div class="so-modal-h">Add ONU for later authorization <button type="button" data-close>&times;</button></div>
-        <div class="so-modal-b">
-            <?php echo csrf_field(); ?><input type="hidden" name="do" value="later">
-            <p class="so-muted" style="margin-top:0">Enter the serial of an ONU that is not plugged in yet. The first time an OLT sees it, SmartOLT authorizes it with these details, within 5 minutes.</p>
-            <div class="so-grid2">
-                <div class="so-field"><label class="so-label">SN</label><input name="sn" required maxlength="20" class="so-input so-mono" placeholder="For example HWTC1A2B3C4D"></div>
-                <div class="so-field"><label class="so-label">OLT</label><select name="olt_id" class="so-select"><option value="">Any OLT</option><?php echo olt_options($olts, ''); ?></select></div>
-                <div class="so-field"><label class="so-label">Preset</label><select name="preset_id" class="so-select"><?php echo options($mgr->presets(), '', 'OLT defaults, no VLAN'); ?></select>
-                    <div class="so-help">VLAN, speed, mode and profiles come from the preset.</div></div>
-                <div class="so-field"><label class="so-label">Name</label><input name="description" maxlength="60" class="so-input" placeholder="For example the customer name"></div>
-                <div class="so-field"><label class="so-label">Zone</label><select name="zone_id" class="so-select"><?php echo options($mgr->zones(), '', 'None'); ?></select></div>
-                <div class="so-field"><label class="so-label">Sector</label><select name="sector_id" class="so-select"><?php echo options($mgr->sectors(), '', 'None'); ?></select></div>
-                <div class="so-field"><label class="so-label">Splitter</label><select name="odb_id" class="so-select"><?php echo options($mgr->odbs(), '', 'None'); ?></select></div>
-                <div class="so-field"><label class="so-label">Splitter port</label><input name="odb_port" type="number" min="1" max="64" class="so-input"></div>
-                <div class="so-field"><label class="so-label">Address or comment</label><input name="address" maxlength="255" class="so-input"></div>
-                <div class="so-field"><label class="so-label">ONU external ID</label><input name="customer_ref" maxlength="100" class="so-input" placeholder="Customer username in your billing"></div>
-            </div>
-        </div>
-        <div class="so-modal-f"><button type="button" class="so-btn so-btn-dark" data-close>Cancel</button><button class="so-btn so-btn-green">Save</button></div>
-    </form>
-</div>
 <?php include __DIR__ . '/backend/templates/footer.php'; ?>

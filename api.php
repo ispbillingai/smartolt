@@ -37,6 +37,7 @@ try {
     fail('Database not configured on this SmartOLT site.', 500);
 }
 $mgr->source = 'api';
+$mgr->ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
 
 $given = '';
 if (preg_match('/^Bearer\s+([0-9a-f]{64})$/', (string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''), $m)) {

@@ -15,6 +15,8 @@ class OltManager
     public string $source = 'panel';
     // Who is acting, for the Events page: the signed in username; empty for the API and the cron.
     public string $user = '';
+    // Where the person acting connected from; 127.0.0.1 for the cron.
+    public string $ip = '127.0.0.1';
 
     // Received light at the ONU, Huawei GPON: below -27 dBm (or above -8, too hot) drops; -25 to -27 is close to it.
     const SIGNAL_CRITICAL = -27.0;
@@ -82,10 +84,11 @@ class OltManager
     }
 
     const ONU_SELECT = 'SELECT u.*, o.name AS olt_name, z.name AS zone_name, d.name AS odb_name, t.name AS type_name,
-            sp.name AS speed_name, sp.down_kbps, sp.up_kbps
+            sp.name AS speed_name, sp.down_kbps, sp.up_kbps, sc.name AS sector_name, pr.name AS preset_name
         FROM onus u JOIN olts o ON o.id=u.olt_id
         LEFT JOIN zones z ON z.id=u.zone_id LEFT JOIN odbs d ON d.id=u.odb_id
-        LEFT JOIN onu_types t ON t.id=u.onu_type_id LEFT JOIN speed_profiles sp ON sp.id=u.speed_profile_id';
+        LEFT JOIN onu_types t ON t.id=u.onu_type_id LEFT JOIN speed_profiles sp ON sp.id=u.speed_profile_id
+        LEFT JOIN sectors sc ON sc.id=u.sector_id LEFT JOIN presets pr ON pr.id=u.preset_id';
 
     public function onu(int $id): ?array
     {
@@ -138,6 +141,13 @@ class OltManager
         foreach (['board' => 'u.slot', 'port_no' => 'u.port'] as $k => $col) {
             if (isset($f[$k]) && $f[$k] !== '' && $f[$k] !== null) { $where[] = "{$col}=?"; $args[] = (int)$f[$k]; }
         }
+        if (($f['vip'] ?? '') !== '') { $where[] = 'u.vip=?'; $args[] = $f['vip'] ? 1 : 0; }
+        foreach (['changed_from' => '>=', 'changed_to' => '<'] as $k => $op) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f[$k] ?? ''))) {
+                $where[] = "GREATEST(COALESCE(u.last_up_at, '2000-01-01'), COALESCE(u.last_down_at, '2000-01-01')) {$op} ?";
+                $args[] = $k === 'changed_to' ? date('Y-m-d', strtotime($f[$k] . ' +1 day')) : $f[$k];
+            }
+        }
         if (in_array($f['mode'] ?? '', ['bridge', 'router'], true)) { $where[] = 'u.mode=?'; $args[] = $f['mode']; }
         if (($s = self::statusWhere((string)($f['signal'] ?? ''))) !== null) { $where[] = $s; }
         if (!empty($f['vlan'])) { $where[] = 'u.vlan=?'; $args[] = (int)$f['vlan']; }
@@ -155,6 +165,7 @@ class OltManager
             'auth_asc'  => 'u.authorized_at IS NULL, u.authorized_at, u.id',
             'name'      => 'u.description',
             'signal'    => 'u.rx_power IS NULL, u.rx_power',
+            'changed'   => "GREATEST(COALESCE(u.last_up_at, '2000-01-01'), COALESCE(u.last_down_at, '2000-01-01')) DESC",
         ][$f['sort'] ?? ''] ?? 'o.name, u.frame, u.slot, u.port, u.ont_id';
         $st = $this->db->prepare(self::ONU_SELECT . ' WHERE ' . implode(' AND ', $where)
             . ' ORDER BY ' . $order . ' LIMIT ' . (int)$limit);
@@ -292,6 +303,8 @@ class OltManager
             try { $this->vpnRemove($olt); } catch (Throwable $e) { /* the login goes with the OLT either way */ }
         }
         $this->db->prepare('DELETE FROM olts WHERE id=?')->execute([$id]);
+        // Nothing left to watch on it, so its alarms end here.
+        $this->db->prepare('UPDATE network_events SET resolved_at=?, updated_at=? WHERE olt_id=? AND resolved_at IS NULL')->execute([self::now(), self::now(), $id]);
         $this->log(null, 'olt.delete', $olt['name'], true, 'removed from SmartOLT, nothing changed on the OLT');
     }
 
@@ -431,9 +444,9 @@ class OltManager
 
     public function log(?int $oltId, string $action, string $target, bool $ok, string $message): void
     {
-        $this->db->prepare('INSERT INTO actions (olt_id, action, target, ok, message, source, user, transcript, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        $this->db->prepare('INSERT INTO actions (olt_id, action, target, ok, message, source, user, ip, transcript, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
             ->execute([$oltId, $action, mb_substr($target, 0, 100), $ok ? 1 : 0, mb_substr($message, 0, 500), $this->source,
-                mb_substr($this->user, 0, 60), $this->lastTranscript, self::now()]);
+                mb_substr($this->user, 0, 60), $this->ip, $this->lastTranscript, self::now()]);
         $this->lastTranscript = null;
     }
 
@@ -490,8 +503,12 @@ class OltManager
         } catch (Throwable $e) {
             $this->db->prepare("UPDATE olts SET status='error', last_error=?, last_polled_at=?, updated_at=? WHERE id=?")
                 ->execute([mb_substr($e->getMessage(), 0, 500), self::now(), self::now(), $olt['id']]);
+            if (!$e instanceof OltError || stripos($e->getMessage(), 'busy') === false) {
+                $this->openEvent((int)$olt['id'], 'olt', 'olt_unreachable:' . $olt['id'], 'critical', 'OLT unreachable', "OLT {$olt['name']} does not respond: " . $e->getMessage());
+            }
             throw $e;
         }
+        $this->resolveEvent('olt_unreachable:' . $olt['id']);
 
         $info = $data['info'];
         $now = self::now();
@@ -606,6 +623,7 @@ class OltManager
             ->execute([$olt['id'], $now, $stats['total'], $stats['online'], $stats['los'], $stats['power_fail'], $stats['other_off'], $stats['warning'], $stats['critical'], count($data['waiting'])]);
         $ponStat = $this->db->prepare('INSERT INTO pon_stats (olt_id, pon, at, total, online) VALUES (?,?,?,?,?)');
         foreach ($perPon as $pon => $p) $ponStat->execute([$olt['id'], $pon, $now, $p['total'], $p['online']]);
+        $this->checkEvents($olt, $info);
         return ['onus' => $stats['total'], 'online' => $stats['online'], 'removed' => $removed, 'model' => $info['model'], 'waiting' => count($data['waiting'])];
     }
 
@@ -631,7 +649,7 @@ class OltManager
     private function metaFromInput(array $in): array
     {
         $m = [];
-        foreach (['zone_id' => 'zones', 'odb_id' => 'odbs', 'onu_type_id' => 'onu_types', 'speed_profile_id' => 'speed_profiles', 'sector_id' => 'sectors'] as $k => $table) {
+        foreach (['zone_id' => 'zones', 'odb_id' => 'odbs', 'onu_type_id' => 'onu_types', 'speed_profile_id' => 'speed_profiles', 'sector_id' => 'sectors', 'preset_id' => 'presets'] as $k => $table) {
             if (!array_key_exists($k, $in)) continue;
             $v = (int)$in[$k];
             if ($v > 0) {
@@ -647,6 +665,8 @@ class OltManager
             $m['odb_port'] = $p;
         }
         if (array_key_exists('customer_ref', $in)) $m['customer_ref'] = mb_substr(trim((string)$in['customer_ref']), 0, 100);
+        if (array_key_exists('contact', $in)) $m['contact'] = mb_substr(trim((string)$in['contact']), 0, 100);
+        if (array_key_exists('vip', $in)) $m['vip'] = empty($in['vip']) ? 0 : 1;
         if (array_key_exists('address', $in)) $m['address'] = mb_substr(trim((string)$in['address']), 0, 255);
         foreach (['lat' => 90, 'lng' => 180] as $k => $max) {
             if (!array_key_exists($k, $in)) continue;
@@ -1069,8 +1089,9 @@ class OltManager
         $eth = (int)($in['eth_ports'] ?? 1); $pots = (int)($in['pots_ports'] ?? 0);
         if ($eth < 0 || $eth > 24 || $pots < 0 || $pots > 8) throw new InvalidArgumentException('Check the number of ports.');
         return $this->saveRow('onu_types', $id, ['name' => $name, 'eth_ports' => $eth, 'pots_ports' => $pots,
-            'wifi' => empty($in['wifi']) ? 0 : 1, 'catv' => empty($in['catv']) ? 0 : 1,
-            'default_mode' => ($in['default_mode'] ?? '') === 'router' ? 'router' : 'bridge']);
+            'wifi' => max(0, min(8, (int)($in['wifi'] ?? 0))), 'catv' => empty($in['catv']) ? 0 : 1,
+            'capability' => ($in['capability'] ?? '') === 'bridge' ? 'bridge' : 'both', 'allow_custom' => empty($in['allow_custom']) ? 0 : 1,
+            'default_mode' => ($in['default_mode'] ?? '') === 'router' && ($in['capability'] ?? '') !== 'bridge' ? 'router' : 'bridge']);
     }
 
     /** Speeds come in as Mbps from the forms; stored and sent to the OLT as kbps. */
@@ -1193,6 +1214,7 @@ class OltManager
             'vlan' => $preset['vlan'] ?? '', 'gemport' => $preset['gemport'] ?? 1, 'mode' => $preset['mode'] ?? 'bridge',
             'onu_type_id' => $preset['onu_type_id'] ?? $this->typeForModel($found['equipment'] ?? '') ?? 0,
             'speed_profile_id' => $preset['speed_profile_id'] ?? 0, 'zone_id' => $preset['zone_id'] ?? 0, 'sector_id' => $preset['sector_id'] ?? 0,
+            'preset_id' => $preset['id'] ?? 0,
         ];
         foreach ($extra as $k => $v) {
             if ($v !== null && $v !== '' && $v !== 0) $in[$k] = $v;
@@ -1257,8 +1279,12 @@ class OltManager
         if ($oltId && !$this->olt($oltId)) throw new InvalidArgumentException('OLT not found.');
         $presetId = (int)($in['preset_id'] ?? 0);
         if ($presetId && !$this->preset($presetId)) throw new InvalidArgumentException('That preset no longer exists.');
-        $meta = $this->metaFromInput(array_intersect_key($in, array_flip(['zone_id', 'sector_id', 'odb_id', 'odb_port', 'address', 'customer_ref'])));
+        $meta = $this->metaFromInput(array_intersect_key($in, array_flip(['zone_id', 'sector_id', 'odb_id', 'odb_port', 'address', 'customer_ref', 'onu_type_id', 'speed_profile_id', 'lat', 'lng'])));
+        $num = function ($k, $max) use ($in) { $v = trim((string)($in[$k] ?? '')); if ($v === '') return null; if (!ctype_digit($v) || (int)$v > $max) throw new InvalidArgumentException("Check the {$k}."); return (int)$v; };
+        $vlan = $num('vlan', 4094);
+        if (!empty($meta['speed_profile_id']) && $vlan === null && !$presetId) throw new InvalidArgumentException('A speed limit needs an internet VLAN.');
         $row = array_merge(['sn' => $sn, 'olt_id' => $oltId ?: null, 'preset_id' => $presetId ?: null,
+            'slot' => $num('slot', 21), 'port' => $num('port', 15), 'vlan' => $vlan, 'mode' => in_array($in['mode'] ?? '', ['router', 'bridge'], true) ? $in['mode'] : '',
             'description' => self::cleanDesc((string)($in['description'] ?? '')), 'last_error' => '', 'created_at' => self::now()], $meta);
         $this->db->prepare('DELETE FROM pending_onus WHERE sn=?')->execute([$sn]);
         return $this->saveRow('pending_onus', null, $row);
@@ -1291,6 +1317,7 @@ class OltManager
                 $pon = "{$u['frame']}/{$u['slot']}/{$u['port']}";
                 $p = $pending[$u['sn']] ?? null;
                 if ($p && $p['olt_id'] !== null && (int)$p['olt_id'] !== (int)$olt['id']) $p = null;
+                if ($p && (($p['slot'] !== null && (int)$p['slot'] !== (int)$u['slot']) || ($p['port'] !== null && (int)$p['port'] !== (int)$u['port']))) $p = null;
                 $rule = null;
                 if (!$p) {
                     $type = $this->typeForModel($u['equipment'] ?? '');
@@ -1308,7 +1335,9 @@ class OltManager
                     if ($p) {
                         $in = $this->presetInput($olt, $u, $p['preset_id'] ? $this->preset((int)$p['preset_id']) : null, [
                             'description' => $p['description'], 'customer_ref' => $p['customer_ref'], 'zone_id' => $p['zone_id'], 'sector_id' => $p['sector_id'],
-                            'odb_id' => $p['odb_id'], 'odb_port' => $p['odb_port'], 'address' => $p['address']]);
+                            'odb_id' => $p['odb_id'], 'odb_port' => $p['odb_port'], 'address' => $p['address'],
+                            'onu_type_id' => $p['onu_type_id'], 'mode' => $p['mode'], 'vlan' => $p['vlan'], 'speed_profile_id' => $p['speed_profile_id'],
+                            'lat' => $p['lat'], 'lng' => $p['lng']]);
                     } else {
                         $in = $this->presetInput($olt, $u, $this->preset((int)$rule['preset_id']));
                     }
@@ -1350,12 +1379,60 @@ class OltManager
         });
     }
 
+    public function cli(int $oltId, string $cmd): string
+    {
+        $olt = $this->olt($oltId);
+        if (!$olt) throw new InvalidArgumentException('OLT not found.');
+        if (!preg_match('/^\s*display\s/i', $cmd)) throw new InvalidArgumentException('Only display commands can be run here, for example: display board 0');
+        return $this->act($olt, 'olt.cli', mb_substr(trim($cmd), 0, 100), function (Huawei $s) use ($cmd) {
+            return $s->displayCommand($cmd);
+        });
+    }
+
     public function runningConfig(int $id): string
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
         return $this->act($olt, 'onu.config', $pos, function (Huawei $s) use ($onu) {
             return $s->runningConfig($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
         });
+    }
+
+    public function swInfo(int $id): array
+    {
+        [$onu, $olt, $pos] = $this->onuAndOlt($id);
+        return $this->act($olt, 'onu.sw_info', $pos, function (Huawei $s) use ($onu) {
+            return $s->ontVersion($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
+        });
+    }
+
+    public function restoreDefaults(int $id): void
+    {
+        [$onu, $olt, $pos] = $this->onuAndOlt($id);
+        $this->act($olt, 'onu.restore', $pos, function (Huawei $s) use ($onu) {
+            $s->restoreDefaults($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
+        });
+    }
+
+    /** Add or remove a VLAN on the OLT and keep the stored VLAN list in step. */
+    public function setVlan(int $oltId, int $vlan, bool $add, string $desc = ''): void
+    {
+        $olt = $this->olt($oltId);
+        if (!$olt) throw new InvalidArgumentException('OLT not found.');
+        if ($vlan < 2 || $vlan > 4094) throw new InvalidArgumentException('The VLAN must be between 2 and 4094.');
+        $desc = preg_replace('/[^A-Za-z0-9 _.-]/', '', mb_substr(trim($desc), 0, 30));
+        if (!$add) {
+            $st = $this->db->prepare('SELECT COUNT(*) FROM onus WHERE olt_id=? AND vlan=?');
+            $st->execute([$oltId, $vlan]);
+            if ($n = (int)$st->fetchColumn()) throw new InvalidArgumentException("{$n} ONUs use VLAN {$vlan}. Move them to another VLAN first.");
+        }
+        $this->act($olt, $add ? 'olt.vlan_add' : 'olt.vlan_delete', "VLAN {$vlan}", function (Huawei $s) use ($vlan, $add, $desc) {
+            $add ? $s->addVlan($vlan, $desc) : $s->deleteVlan($vlan);
+        });
+        $prof = json_decode((string)$olt['profiles_json'], true) ?: ['line' => [], 'srv' => [], 'vlans' => []];
+        $prof['vlans'] = array_values(array_filter($prof['vlans'] ?? [], function ($v) use ($vlan) { return (int)$v['id'] !== $vlan; }));
+        if ($add) $prof['vlans'][] = ['id' => $vlan, 'type' => 'smart', 'attribute' => 'common', 'desc' => $desc];
+        usort($prof['vlans'], function ($a, $b) { return $a['id'] <=> $b['id']; });
+        $this->db->prepare('UPDATE olts SET profiles_json=? WHERE id=?')->execute([json_encode($prof), $oltId]);
     }
 
     /** Put the VLAN, mode and speed SmartOLT has saved back on the OLT. */
@@ -1365,6 +1442,167 @@ class OltManager
         if (!$onu) throw new InvalidArgumentException('ONU not found.');
         if (!$onu['vlan']) throw new InvalidArgumentException('No internet VLAN is saved for this ONU. Set it under Service first.');
         $this->setService($id, ['vlan' => $onu['vlan'], 'mode' => $onu['mode'] ?: 'bridge', 'gemport' => $onu['gemport'], 'speed_profile_id' => $onu['speed_profile_id'] ?? 0]);
+    }
+
+    // ----- Network events: alarms that open when something goes wrong and resolve on their own -----
+
+    const EVENT_TYPES = ['olt' => 'OLT', 'pon' => 'PON outage', 'signal' => 'PON signal', 'temp' => 'OLT temp'];
+
+    public function openEvent(?int $oltId, string $type, string $key, string $severity, string $title, string $message): void
+    {
+        $st = $this->db->prepare('SELECT id FROM network_events WHERE ekey=? AND resolved_at IS NULL');
+        $st->execute([$key]);
+        if ($id = $st->fetchColumn()) {
+            $this->db->prepare('UPDATE network_events SET message=?, updated_at=? WHERE id=?')->execute([mb_substr($message, 0, 500), self::now(), $id]);
+            return;
+        }
+        // A muted kind of event stays muted when it opens again.
+        $st = $this->db->prepare('SELECT COUNT(*) FROM network_events WHERE ekey=? AND muted=1');
+        $st->execute([$key]);
+        $muted = (int)$st->fetchColumn() > 0 ? 1 : 0;
+        $this->db->prepare('INSERT INTO network_events (olt_id, type, ekey, severity, title, message, started_at, updated_at, muted) VALUES (?,?,?,?,?,?,?,?,?)')
+            ->execute([$oltId, $type, $key, $severity, $title, mb_substr($message, 0, 500), self::now(), self::now(), $muted]);
+    }
+
+    public function resolveEvent(string $key): void
+    {
+        $this->db->prepare('UPDATE network_events SET resolved_at=?, updated_at=? WHERE ekey=? AND resolved_at IS NULL')->execute([self::now(), self::now(), $key]);
+    }
+
+    /** After a good read: PON ports gone dark, ports with many critical signals, a hot OLT. */
+    private function checkEvents(array $olt, array $info): void
+    {
+        $id = (int)$olt['id'];
+        $st = $this->db->prepare("SELECT frame, slot, port, COUNT(*) total, SUM(status_group='los') los, SUM(run_state<>'online') offline,
+            SUM(rx_power IS NOT NULL AND (rx_power < ? OR rx_power > ?)) critical FROM onus WHERE olt_id=? GROUP BY frame, slot, port");
+        $st->execute([self::SIGNAL_CRITICAL, self::SIGNAL_HOT, $id]);
+        $open = [];
+        foreach ($st->fetchAll() as $p) {
+            $pon = "{$p['frame']}/{$p['slot']}/{$p['port']}";
+            if ((int)$p['total'] >= 2 && (int)$p['offline'] === (int)$p['total'] && (int)$p['los'] > 0) {
+                $this->openEvent($id, 'pon', "pon_outage:{$id}:{$pon}", 'critical', 'PON outage', "Every ONU on {$olt['name']} PON {$pon} lost signal ({$p['total']} ONUs), likely a feeder fiber cut");
+                $open["pon_outage:{$id}:{$pon}"] = true;
+            }
+            if ((int)$p['critical'] >= 3) {
+                $this->openEvent($id, 'signal', "pon_signal:{$id}:{$pon}", 'warning', 'PON signal', "{$p['critical']} ONUs on {$olt['name']} PON {$pon} have a critical signal");
+                $open["pon_signal:{$id}:{$pon}"] = true;
+            }
+        }
+        $temp = (int)($info['temperature'] ?? 0);
+        if ($temp >= 70) {
+            $this->openEvent($id, 'temp', "olt_temp:{$id}", $temp >= 80 ? 'critical' : 'warning', 'OLT temperature', "{$olt['name']} control board is at {$temp}°C");
+            $open["olt_temp:{$id}"] = true;
+        }
+        $st = $this->db->prepare("SELECT ekey FROM network_events WHERE olt_id=? AND resolved_at IS NULL AND type IN ('pon','signal','temp')");
+        $st->execute([$id]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $key) {
+            if (empty($open[$key])) $this->resolveEvent($key);
+        }
+    }
+
+    /** Events for the Events page: tab ongoing, muted, history or all; filters olt_id, q, from, to. */
+    public function events(array $f, int $limit = 500): array
+    {
+        [$where, $args] = self::rangeWhere($f, 'e.started_at');
+        $tab = $f['tab'] ?? 'ongoing';
+        if ($tab === 'ongoing') $where[] = 'e.resolved_at IS NULL AND e.muted=0';
+        elseif ($tab === 'muted') $where[] = 'e.muted=1';
+        elseif ($tab === 'history') $where[] = 'e.resolved_at IS NOT NULL';
+        if (!empty($f['olt_id'])) { $where[] = 'e.olt_id=?'; $args[] = (int)$f['olt_id']; }
+        if (($q = trim((string)($f['q'] ?? ''))) !== '') {
+            $where[] = '(e.title LIKE ? OR e.message LIKE ? OR o.name LIKE ?)';
+            array_push($args, "%{$q}%", "%{$q}%", "%{$q}%");
+        }
+        $st = $this->db->prepare('SELECT e.*, o.name AS olt_name FROM network_events e LEFT JOIN olts o ON o.id=e.olt_id WHERE '
+            . implode(' AND ', $where) . " ORDER BY e.resolved_at IS NULL DESC, e.severity='critical' DESC, e.id DESC LIMIT " . (int)$limit);
+        $st->execute($args);
+        return $st->fetchAll();
+    }
+
+    /** Counters over ongoing, unmuted events for the tiles on the Events page. */
+    public function eventCounts(): array
+    {
+        $r = ['total' => 0, 'critical' => 0, 'warning' => 0, 'olt' => 0, 'pon' => 0, 'signal' => 0, 'temp' => 0];
+        foreach ($this->db->query('SELECT type, severity FROM network_events WHERE resolved_at IS NULL AND muted=0')->fetchAll() as $e) {
+            $r['total']++;
+            $r[$e['severity'] === 'critical' ? 'critical' : 'warning']++;
+            $r[$e['type']] = ($r[$e['type']] ?? 0) + 1;
+        }
+        return $r;
+    }
+
+    /** Mute one event, or every event of the same kind on the same thing ($similar). */
+    public function muteEvent(int $id, bool $similar, bool $mute = true): void
+    {
+        $st = $this->db->prepare('SELECT ekey FROM network_events WHERE id=?');
+        $st->execute([$id]);
+        $key = $st->fetchColumn();
+        if ($key === false) throw new InvalidArgumentException('Event not found.');
+        if ($similar) $this->db->prepare('UPDATE network_events SET muted=? WHERE ekey=?')->execute([$mute ? 1 : 0, $key]);
+        else $this->db->prepare('UPDATE network_events SET muted=? WHERE id=?')->execute([$mute ? 1 : 0, $id]);
+    }
+
+    // ----- ONU notes and tickets -----
+
+    public function notes(int $onuId): array
+    {
+        $st = $this->db->prepare('SELECT * FROM onu_notes WHERE onu_id=? ORDER BY id DESC');
+        $st->execute([$onuId]);
+        return $st->fetchAll();
+    }
+
+    public function addNote(int $onuId, string $note): void
+    {
+        $note = trim($note);
+        if ($note === '') throw new InvalidArgumentException('Write the note first.');
+        if (!$this->onu($onuId)) throw new InvalidArgumentException('ONU not found.');
+        $this->db->prepare('INSERT INTO onu_notes (onu_id, note, user, created_at) VALUES (?,?,?,?)')->execute([$onuId, mb_substr($note, 0, 5000), $this->user, self::now()]);
+    }
+
+    const TICKET_TYPES = ['support' => 'Support', 'installation' => 'Installation', 'repair' => 'Repair', 'relocation' => 'Relocation', 'other' => 'Other'];
+    const TICKET_PRIORITIES = ['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'urgent' => 'Urgent'];
+
+    public function tickets(array $f = []): array
+    {
+        $where = ['1=1'];
+        $args = [];
+        if (!empty($f['onu_id'])) { $where[] = 't.onu_id=?'; $args[] = (int)$f['onu_id']; }
+        if (in_array($f['status'] ?? '', ['open', 'closed'], true)) { $where[] = 't.status=?'; $args[] = $f['status']; }
+        $st = $this->db->prepare('SELECT t.*, u.description AS onu_name, u.sn FROM tickets t LEFT JOIN onus u ON u.id=t.onu_id WHERE '
+            . implode(' AND ', $where) . " ORDER BY t.status='open' DESC, t.id DESC LIMIT 500");
+        $st->execute($args);
+        return $st->fetchAll();
+    }
+
+    public function saveTicket(array $in): int
+    {
+        $subject = trim((string)($in['subject'] ?? ''));
+        if ($subject === '') throw new InvalidArgumentException('Give the ticket a subject.');
+        $onuId = (int)($in['onu_id'] ?? 0);
+        if ($onuId && !$this->onu($onuId)) throw new InvalidArgumentException('ONU not found.');
+        $start = trim((string)($in['start_at'] ?? ''));
+        $startAt = $start !== '' && strtotime($start) ? date('Y-m-d H:i:s', strtotime($start)) : null;
+        $this->db->prepare('INSERT INTO tickets (onu_id, subject, description, type, priority, assignee, start_at, duration_min, user, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+            ->execute([$onuId ?: null, mb_substr($subject, 0, 150), mb_substr(trim((string)($in['description'] ?? '')), 0, 5000),
+                isset(self::TICKET_TYPES[$in['type'] ?? '']) ? $in['type'] : 'support', isset(self::TICKET_PRIORITIES[$in['priority'] ?? '']) ? $in['priority'] : 'normal',
+                mb_substr(trim((string)($in['assignee'] ?? '')), 0, 60), $startAt, max(5, min(1440, (int)($in['duration_min'] ?? 60))), $this->user, self::now()]);
+        return (int)$this->db->lastInsertId();
+    }
+
+    public function closeTicket(int $id, bool $closed = true): void
+    {
+        $this->db->prepare('UPDATE tickets SET status=? WHERE id=?')->execute([$closed ? 'closed' : 'open', $id]);
+    }
+
+    /** ONUs authorized through SmartOLT per day, for the dashboard chart. [Y-m-d => n] */
+    public function authorizationsPerDay(int $days = 14): array
+    {
+        $out = [];
+        for ($i = $days - 1; $i >= 0; $i--) $out[date('Y-m-d', time() - $i * 86400)] = 0;
+        $st = $this->db->prepare("SELECT DATE(created_at) d, COUNT(*) n FROM actions WHERE action='onu.authorize' AND ok=1 AND created_at >= ? GROUP BY d");
+        $st->execute([date('Y-m-d', time() - ($days - 1) * 86400)]);
+        foreach ($st->fetchAll() as $r) $out[$r['d']] = (int)$r['n'];
+        return $out;
     }
 
     // ----- Reports -----
@@ -1400,10 +1638,104 @@ class OltManager
     }
 
     /** Every PON port on every OLT with how full it is (Huawei GPON takes 128 ONUs per port). */
-    public function ponOccupancy(): array
+    public function ponOccupancy(int $oltId = 0): array
     {
-        return $this->db->query("SELECT o.id AS olt_id, o.name AS olt_name, u.frame, u.slot, u.port, COUNT(*) total, SUM(u.status_group='online') online
-            FROM onus u JOIN olts o ON o.id=u.olt_id GROUP BY o.id, u.frame, u.slot, u.port ORDER BY total DESC, o.name, u.slot, u.port")->fetchAll();
+        $used = [];
+        foreach ($this->db->query("SELECT u.olt_id, u.frame, u.slot, u.port, COUNT(*) total, SUM(u.status_group='online') online,
+            COUNT(DISTINCT u.odb_id) splitters FROM onus u GROUP BY u.olt_id, u.frame, u.slot, u.port")->fetchAll() as $r) {
+            $used["{$r['olt_id']}:{$r['frame']}/{$r['slot']}/{$r['port']}"] = $r;
+        }
+        // Free ports of the splitters hanging on each PON port.
+        $free = [];
+        foreach ($this->db->query('SELECT u.olt_id, u.frame, u.slot, u.port, d.id, d.ports, COUNT(*) n FROM onus u JOIN odbs d ON d.id=u.odb_id
+            GROUP BY u.olt_id, u.frame, u.slot, u.port, d.id, d.ports')->fetchAll() as $r) {
+            $k = "{$r['olt_id']}:{$r['frame']}/{$r['slot']}/{$r['port']}";
+            $free[$k] = ($free[$k] ?? 0) + max(0, (int)$r['ports'] - (int)$r['n']);
+        }
+        // Every PON port of every GPON board, used or not. GPBD and GPBH boards have 8 ports, the rest 16.
+        $out = [];
+        foreach ($this->olts() as $o) {
+            if ($oltId && (int)$o['id'] !== $oltId) continue;
+            $ports = [];
+            foreach (json_decode((string)$o['boards_json'], true) ?: [] as $b) {
+                if (empty($b['gpon'])) continue;
+                $n = preg_match('/GPB[DH]/i', $b['name']) ? 8 : 16;
+                for ($p = 0; $p < $n; $p++) $ports["0/{$b['slot']}/{$p}"] = [0, (int)$b['slot'], $p];
+            }
+            foreach ($used as $k => $r) {
+                if ((int)$r['olt_id'] === (int)$o['id']) $ports["{$r['frame']}/{$r['slot']}/{$r['port']}"] = [(int)$r['frame'], (int)$r['slot'], (int)$r['port']];
+            }
+            uasort($ports, function ($a, $b) { return [$a[1], $a[2]] <=> [$b[1], $b[2]]; });
+            foreach ($ports as $pon => [$f, $s, $p]) {
+                $k = "{$o['id']}:{$pon}";
+                $out[] = ['olt_id' => (int)$o['id'], 'olt_name' => $o['name'], 'frame' => $f, 'slot' => $s, 'port' => $p, 'max' => 128,
+                    'total' => (int)($used[$k]['total'] ?? 0), 'online' => (int)($used[$k]['online'] ?? 0),
+                    'splitters' => (int)($used[$k]['splitters'] ?? 0), 'empty' => $free[$k] ?? null];
+            }
+        }
+        usort($out, function ($a, $b) { return $b['total'] <=> $a['total']; });
+        return $out;
+    }
+
+    /**
+     * ONUs for the Splitter check report: without a splitter, or further than $far metres from their
+     * splitter when both have a location. Filters: reason (none|far), olt_id, board, port_no, zone_id, sector_id.
+     */
+    public function onuSplitterCheck(array $f, int $far = 300): array
+    {
+        $out = ['none' => 0, 'far' => 0, 'rows' => []];
+        $odbs = array_column($this->odbs(), null, 'id');
+        foreach ($this->listOnus(array_intersect_key($f, array_flip(['olt_id', 'board', 'port_no', 'zone_id', 'sector_id']))) as $u) {
+            $reason = null;
+            $dist = null;
+            if ($u['odb_id'] === null) {
+                $reason = 'none';
+            } elseif ($u['lat'] !== null && ($d = $odbs[$u['odb_id']] ?? null) && $d['lat'] !== null) {
+                $dist = (int)round(self::metres((float)$u['lat'], (float)$u['lng'], (float)$d['lat'], (float)$d['lng']));
+                if ($dist > $far) $reason = 'far';
+            }
+            if ($reason === null) continue;
+            $out[$reason]++;
+            if (($f['reason'] ?? '') !== '' && $f['reason'] !== $reason) continue;
+            if (count($out['rows']) < 1000) $out['rows'][] = $u + ['reason' => $reason, 'distance' => $dist];
+        }
+        return $out;
+    }
+
+    private static function metres(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $r = 6371000;
+        $a = sin(deg2rad($lat2 - $lat1) / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin(deg2rad($lng2 - $lng1) / 2) ** 2;
+        return 2 * $r * asin(min(1, sqrt($a)));
+    }
+
+    /** Automatic keep in sync: once a day the cron puts the saved setup back on ONUs that drifted. */
+    public function autoSyncOn(): bool
+    {
+        return $this->db->query("SELECT v FROM meta WHERE k='auto_sync'")->fetchColumn() === 'on';
+    }
+
+    public function setAutoSync(bool $on): void
+    {
+        $this->db->prepare("REPLACE INTO meta (k, v) VALUES ('auto_sync', ?)")->execute([$on ? 'on' : 'off']);
+    }
+
+    /** Resync every mismatched ONU that has a saved VLAN. Returns [done, failed messages]. */
+    public function runAutoSync(): array
+    {
+        $done = 0;
+        $failed = [];
+        $source = $this->source;
+        $this->source = 'auto';
+        try {
+            foreach ($this->mismatches() as $u) {
+                if (!$u['vlan'] || $u['status_group'] === 'disabled') continue;
+                try { $this->resync((int)$u['id']); $done++; } catch (Throwable $e) { $failed[] = "{$u['description']}: {$e->getMessage()}"; }
+            }
+        } finally {
+            $this->source = $source;
+        }
+        return [$done, $failed];
     }
 
     /** Splitters with problems: over capacity, a port used twice, ONUs with no port, fed from more than one PON port. */
@@ -1469,7 +1801,11 @@ class OltManager
         if (($f['action'] ?? '') !== '') { $where[] = 'a.action=?'; $args[] = (string)$f['action']; }
         if (!empty($f['tasks'])) $where[] = "(a.source='auto' OR a.action LIKE 'onu.bulk%' OR a.action='olt.save')";
         if (!empty($f['ok'])) $where[] = 'a.ok=1';
-        $st = $this->db->prepare('SELECT a.id, a.action, a.target, a.ok, a.message, a.source, a.user, a.created_at, o.name AS olt_name
+        if (($q = trim((string)($f['q'] ?? ''))) !== '') {
+            $where[] = '(a.target LIKE ? OR a.action LIKE ? OR a.message LIKE ?)';
+            array_push($args, "%{$q}%", "%{$q}%", "%{$q}%");
+        }
+        $st = $this->db->prepare('SELECT a.id, a.action, a.target, a.ok, a.message, a.source, a.user, a.ip, a.created_at, o.name AS olt_name
             FROM actions a LEFT JOIN olts o ON o.id=a.olt_id WHERE ' . implode(' AND ', $where) . ' ORDER BY a.id DESC LIMIT ' . (int)$limit);
         $st->execute($args);
         return $st->fetchAll();

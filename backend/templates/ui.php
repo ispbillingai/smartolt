@@ -1,6 +1,8 @@
 <?php
 // Small pieces of markup every page shares. Styles live in assets/app.css.
 
+const SMARTOLT_VERSION = '1.5.0';
+
 function e($s): string
 {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
@@ -57,6 +59,7 @@ const ACTION_LABELS = [
     'onu.service' => 'Change VLAN or speed', 'onu.enable' => 'Enable ONU', 'onu.disable' => 'Disable ONU', 'onu.replace_sn' => 'Replace ONU',
     'onu.bulk_reboot' => 'Reboot many ONUs', 'onu.bulk_disable' => 'Disable many ONUs', 'onu.bulk_enable' => 'Enable many ONUs', 'onu.bulk_speed' => 'Set speed on many ONUs',
     'olt.refresh' => 'Read OLT', 'olt.delete' => 'Remove OLT', 'olt.save' => 'Save OLT configuration', 'olt.diag' => 'Diagnostics',
+    'onu.sw_info' => 'ONU software info', 'onu.restore' => 'Restore ONU defaults', 'olt.vlan_add' => 'Add VLAN', 'olt.vlan_delete' => 'Delete VLAN', 'olt.cli' => 'CLI command', 'report.export' => 'Export ONUs',
 ];
 
 /** "0/1/0 HWTC12345678 authorized" style line for the dashboard Info list. */
@@ -149,7 +152,7 @@ function options(array $rows, $selected, string $none = ''): string
 {
     $html = $none !== '' ? '<option value="">' . e($none) . '</option>' : '';
     foreach ($rows as $r) {
-        $html .= '<option value="' . (int)$r['id'] . '"' . ((string)$selected === (string)$r['id'] ? ' selected' : '') . '>' . e($r['name']) . '</option>';
+        $html .= '<option value="' . e($r['id']) . '"' . ((string)$selected === (string)$r['id'] ? ' selected' : '') . '>' . e($r['name']) . '</option>';
     }
     return $html;
 }

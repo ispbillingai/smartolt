@@ -39,12 +39,12 @@ check "dashboard has no PHP errors" "$(noerr "$P")"
 
 # ----- OLTs -----
 P=$(get olts.php)
-check "OLT form opens when there is no OLT" "$(both "$(has "$P" 'Save and connect')" "$(has "$P" 'so-modal show')")"
+check "OLT form opens when there is no OLT" "$(both "$(has "$P" 'Add OLT</h1>')" "$(has "$P" 'OLT telnet password')")"
 P=$(post olts.php -d csrf=bad -d do=save -d conn_type=direct -d name=X -d host=127.0.0.1 -d telnet_port=$OLT_PORT -d username=root -d password=admin123)
 check "a form without the session token is refused" "$(has "$P" 'Your session expired')"
 P=$(post olts.php -d csrf=$(T olts.php) -d do=save -d conn_type=direct -d "name=Main OLT" -d host=127.0.0.1 -d telnet_port=$OLT_PORT -d username=root -d password=admin123)
 check "save OLT reads it at once" "$(has "$P" 'OLT saved and read: 4 ONUs found, 2 online')"
-check "OLT list shows the model" "$(has "$P" 'Huawei MA5683T')"
+check "OLT list shows the model" "$(has "$P" 'Huawei-MA5683T')"
 check "OLT list has no PHP errors" "$(noerr "$P")"
 P=$(post olts.php -d csrf=$(csrf "$P") -d do=refresh -d id=1)
 check "refresh" "$(has "$P" 'Main OLT read: 4 ONUs, 2 online')"
@@ -55,8 +55,11 @@ check "dashboard card: offline split by cause" "$(has "$P" 'PwrFail: 1 &nbsp;LoS
 check "dashboard OLT panel shows uptime and temperature" "$(has "$P" '3d 04:33, 45°C')"
 check "dashboard PON outage rows" "$(both "$(has "$P" 'Full PON LOS')" "$(has "$P" 'Offline N/A')")"
 check "dashboard has no PHP errors" "$(noerr "$P")"
+P=$(get "olt.php?id=1&tab=pon")
+C=$(get "olt.php?id=1&tab=cards")
+check "OLT page lists PON ports and boards" "$(both "$(has "$P" '0/1/1')" "$(has "$C" 'H805GPFD')")"
 P=$(get "olt.php?id=1")
-check "OLT page lists PON ports and boards" "$(both "$(has "$P" '0/1/1')" "$(has "$P" 'H805GPFD')")"
+check "OLT details tab" "$(both "$(has "$P" 'OLT hardware version')" "$(has "$P" '3d 04:33')")"
 check "OLT page has no PHP errors" "$(noerr "$P")"
 
 # ----- Settings lists -----
@@ -103,7 +106,8 @@ ID=$(grep -o 'name="id" value="[0-9]*"' <<< "$P" | head -1 | grep -o '[0-9]*')
 
 # ----- ONU page -----
 P=$(get "onu.php?id=$ID")
-check "ONU page reads it live" "$(both "$(has "$P" 'What the OLT reports')" "$(has "$P" 'INTERNET_100')")"
+C=$(get "onu.php?id=$ID&ajax=status")
+check "ONU status box reads it live" "$(both "$(has "$C" '"ok":true')" "$(has "$C" '"status":"Online"')")"
 P=$(post onu.php -d csrf=$(csrf "$P") -d do=details -d id=$ID -d zone_id=1 -d onu_type_id=5 -d odb_id=1 -d odb_port=4 -d "address=Block 5" -d lat=-1.2211 -d lng=36.8961)
 check "details saved" "$(both "$(has "$P" 'Details saved')" "$(has "$P" 'Block 5')")"
 P=$(post onu.php -d csrf=$(csrf "$P") -d do=details -d id=$ID -d lat=200 -d lng=1)
@@ -220,29 +224,31 @@ P=$(get tasks.php)
 check "task history shows the auto action" "$(both "$(has "$P" 'Auto action')" "$(has "$P" 'Set speed on many ONUs')")"
 
 # ----- Diag, save, events, other pages -----
-P=$(post diag.php -d csrf=$(T diag.php) -d olt_id=1 -d check=version)
+P=$(post "olt.php?id=1&tab=cli" -d csrf=$(T "olt.php?id=1&tab=cli") -d do=cli -d id=1 -d tab=cli -d check=version)
 check "diag runs a display command" "$(has "$P" 'MA5600V800R018C10')"
-P=$(post diag.php -d csrf=$(csrf "$P") -d olt_id=1 -d check=summary -d frame=0 -d slot=1 -d port=0)
+P=$(post "olt.php?id=1&tab=cli" -d csrf=$(csrf "$P") -d do=cli -d id=1 -d tab=cli -d check=summary -d frame=0 -d slot=1 -d port=0)
 check "diag with a PON port" "$(has "$P" 'In port 0/1/0')"
-P=$(post diag.php -d csrf=$(csrf "$P") -d olt_id=1 -d check=onu -d frame=0 -d slot=1 -d port=x)
+P=$(post "olt.php?id=1&tab=cli" -d csrf=$(csrf "$P") -d do=cli -d id=1 -d tab=cli -d check=onu -d frame=0 -d slot=1 -d port=x)
 check "diag refuses a parameter that is not a number" "$(has "$P" 'Fill in port as a number')"
 P=$(post save.php -d csrf=$(T index.php) -d olt_id=0 -d back=/olts.php)
 check "save the OLT configuration" "$(both "$(has "$P" 'Configuration saved on Main OLT')" "$(has "$P" '<h1>OLTs</h1>')")"
 P=$(post save.php -d csrf=$(T index.php) -d olt_id=0 -d back=https://evil.example/x)
 check "save never sends you to another site" "$(has "$P" 'Waiting authorization')"
-P=$(get "events.php?action=olt.save")
-check "events filter by action" "$(both "$(has "$P" '<td>Save OLT configuration</td>')" "$(hasnt "$P" '<td>Authorize ONU</td>')")"
-P=$(get "events.php?user=admin")
-check "events filter by user" "$(has "$P" '<td>admin</td>')"
-P=$(get "events.php?from=2001-01-01&to=2001-01-02")
-check "events with no rows" "$(has "$P" 'No info available')"
+P=$(get "info.php?action=olt.save")
+check "info filter by action" "$(both "$(has "$P" 'configuration saved by admin')" "$(hasnt "$P" 'authorized by admin')")"
+P=$(get "info.php?user=admin")
+check "info filter by user, with IP" "$(both "$(has "$P" '<td>admin</td>')" "$(has "$P" '127.0.0.1')")"
+P=$(get "info.php?from=2001-01-01&to=2001-01-02")
+check "info with no rows" "$(has "$P" 'No info available')"
+C=$(get "info.php?export=1")
+check "info export" "$(both "$(has "$C" 'IP address')" "$(has "$C" 'Save OLT configuration')")"
 P=$(get "map.php?layer=odb")
 check "splitters map shows the splitter" "$(has "$P" 'ODB-K1')"
 for p in map.php graphs.php "graphs.php?olt=1&range=168" vpn.php billing.php help.php tasks.php auto_actions.php "catalog.php?k=presets" "catalog.php?k=sectors"; do
     P=$(get "$p"); check "$p has no PHP errors" "$(noerr "$P")"
 done
 P=$(get logs.php)
-check "old activity log link opens Events" "$(has "$P" 'No info available\|<td>Authorize ONU</td>')"
+check "old activity log link opens Info" "$(has "$P" 'ONU SN/MAC or Action')"
 P=$(get "setup.php?tab=speeds")
 check "old network setup link opens the speed profiles" "$(has "$P" '<h1>Speed profiles</h1>')"
 P=$(post "catalog.php?k=zones" -d csrf=$(T "catalog.php?k=zones") -d do=save -d name=Unused)
@@ -250,6 +256,73 @@ P=$(post "catalog.php?k=zones" -d csrf=$(csrf "$P") -d do=unused)
 check "delete unused zones keeps the one in use" "$(both "$(has "$P" 'Removed 2 not used')" "$(both "$(hasnt "$P" '>Unused<')" "$(has "$P" 'Kasarani')")")"
 P=$(get index.php)
 check "dashboard Info lists the latest changes" "$(has "$P" 'configuration saved by admin')"
+# ----- Round 2: events, OLT tabs, ONU page buttons, notes, tickets, later form, keep in sync, diag list -----
+P=$(get "olt.php?id=1&tab=vlans")
+P=$(post "olt.php?id=1&tab=vlans" -d csrf=$(csrf "$P") -d do=vlan_add -d id=1 -d tab=vlans -d vlan=300 -d "desc=iptv test")
+check "add a VLAN on the OLT" "$(both "$(has "$P" 'VLAN 300 added')" "$(has "$P" '<td>300</td>')")"
+P=$(post "olt.php?id=1&tab=vlans" -d csrf=$(csrf "$P") -d do=vlan_delete -d id=1 -d tab=vlans -d vlan=100)
+check "a VLAN in use cannot be deleted" "$(has "$P" 'use VLAN 100')"
+P=$(post "olt.php?id=1&tab=vlans" -d csrf=$(csrf "$P") -d do=vlan_delete -d id=1 -d tab=vlans -d vlan=300)
+check "delete an unused VLAN" "$(both "$(has "$P" 'VLAN 300 deleted')" "$(hasnt "$P" '<td>300</td>')")"
+P=$(post "olt.php?id=1&tab=cli" -d csrf=$(T "olt.php?id=1&tab=cli") -d do=cli -d id=1 -d tab=cli -d "command=display sysuptime")
+check "CLI runs a display command" "$(has "$P" 'System up time')"
+P=$(post "olt.php?id=1&tab=cli" -d csrf=$(csrf "$P") -d do=cli -d id=1 -d tab=cli -d "command=undo vlan 100")
+check "CLI refuses anything but display" "$(has "$P" 'Only display commands')"
+for t in details cards pon uplink vlans profiles cli; do P=$(get "olt.php?id=1&tab=$t"); check "OLT tab $t has no PHP errors" "$(noerr "$P")"; done
+ONU=$(grep -o 'onu.php?id=[0-9]*' <<< "$(get 'onus.php?q=alice')" | head -1 | grep -o '[0-9]*$')
+P=$(post onu.php -d csrf=$(T "onu.php?id=$ONU") -d do=sw_info -d id=$ONU)
+check "SW info from the OLT" "$(both "$(has "$P" 'V5R019C00S050')" "$(has "$P" 'SW info')")"
+P=$(post onu.php -d csrf=$(csrf "$P") -d do=restore -d id=$ONU)
+check "restore defaults" "$(has "$P" 'Factory defaults restored')"
+P=$(post onu.php -d csrf=$(csrf "$P") -d do=vip -d id=$ONU -d vip=1)
+check "mark as VIP" "$(both "$(has "$P" 'Marked as VIP')" "$(has "$P" 'fa fa-star"')")"
+P=$(get "diag.php?vip=1")
+check "diag lists VIP ONUs only" "$(both "$(has "$P" 'alice_home')" "$(hasnt "$P" 'erin_flat')")"
+P=$(get "diag.php?status=los")
+check "diag status filter" "$(both "$(has "$P" 'erin_flat')" "$(hasnt "$P" 'alice_home')")"
+check "diag has no PHP errors" "$(noerr "$P")"
+C=$(get "diag.php?export=1")
+check "diag export" "$(both "$(has "$C" 'Rx ONU dBm')" "$(has "$C" 'alice_home')")"
+P=$(post onu.php -d csrf=$(T "onu.php?id=$ONU") -d do=note -d id=$ONU -d "note=Router behind the TV")
+check "add a note on the ONU" "$(both "$(has "$P" 'Note added')" "$(has "$P" 'Router behind the TV')")"
+P=$(get "tickets.php?add=1&onu=$ONU")
+check "new ticket form picks the ONU" "$(has "$P" "value=\"$ONU\" selected")"
+P=$(post tickets.php -d csrf=$(csrf "$P") -d do=add -d onu_id=$ONU -d "subject=No internet" -d type=repair -d priority=high -d "start_at=2026-12-01T10:00" -d duration_min=60)
+check "ticket added and shown on the ONU" "$(both "$(has "$P" 'Ticket added')" "$(has "$P" 'No internet')")"
+P=$(get tickets.php)
+TID=$(grep -o 'name="id" value="[0-9]*"' <<< "$P" | head -1 | grep -o '[0-9]*')
+P=$(post tickets.php -d csrf=$(csrf "$P") -d do=close -d id=$TID)
+check "close a ticket" "$(has "$P" 'Ticket closed')"
+P=$(get later.php)
+check "later form" "$(both "$(has "$P" 'Add ONU for later authorization</h1>')" "$(noerr "$P")")"
+P=$(post later.php -d csrf=$(csrf "$P") -d sn=485754434D2F7777 -d slot=1 -d port=5 -d mode=bridge -d vlan=100 -d "description=Next week")
+check "later form saves" "$(both "$(has "$P" 'authorized with these details')" "$(has "$P" '485754434D2F7777')")"
+P=$(post later.php -d csrf=$(T later.php) -d sn=485754434D2F7778 -d speed_profile_id=1)
+check "later form needs a VLAN for a speed" "$(has "$P" 'speed limit needs an internet VLAN')"
+P=$(post reports.php -d csrf=$(T "reports.php?r=mismatch") -d do=auto_sync -d on=1)
+check "keep in sync on" "$(both "$(has "$P" 'Keep in sync is on')" "$(has "$P" '>Enabled<')")"
+P=$(post reports.php -d csrf=$(csrf "$P") -d do=scan -d "olts[]=1")
+check "scan and compare" "$(both "$(has "$P" 'Manual Check')" "$(noerr "$P")")"
+P=$(get "reports.php?r=pon")
+check "PON occupancy lists every port of the boards" "$(both "$(has "$P" 'pon=0/2/15')" "$(has "$P" 'PON ports at 90% or more')")"
+P=$(get "reports.php?r=splitters&reason=none")
+check "splitter check counts ONUs without a splitter" "$(has "$P" 'ONUs without a Splitter')"
+# An OLT that does not answer opens a network event; muting it moves it to the Muted tab.
+P=$(post olts.php -d csrf=$(T olts.php) -d do=save -d conn_type=direct -d "name=Dead OLT" -d host=127.0.0.1 -d telnet_port=1 -d username=root -d password=x)
+P=$(get events.php)
+check "an unreachable OLT opens an event" "$(both "$(has "$P" 'OLT unreachable')" "$(has "$P" 'Ongoing')")"
+EID=$(grep -o 'name="id" value="[0-9]*"' <<< "$P" | head -1 | grep -o '[0-9]*')
+P=$(post events.php -d csrf=$(csrf "$P") -d do=mute -d id=$EID -d similar=1)
+check "mute the event" "$(both "$(has "$P" 'Event muted')" "$(hasnt "$P" 'Mute this event')")"
+P=$(get "events.php?tab=muted")
+check "muted tab shows it" "$(has "$P" 'Dead OLT')"
+check "events have no PHP errors" "$(noerr "$P")"
+DID=$(grep -o 'olt.php?id=[0-9]*' <<< "$(get olts.php)" | grep -o '[0-9]*$' | sort -n | tail -1)
+P=$(post olts.php -d csrf=$(T olts.php) -d do=delete -d id=$DID)
+check "remove the dead OLT" "$(hasnt "$P" '>Dead OLT<')"
+P=$(get "catalog.php?k=types")
+check "ONU types list as in SmartOLT" "$(both "$(has "$P" 'Allow custom profiles')" "$(has "$P" 'EG8021V5')")"
+
 P=$(get settings.php)
 check "settings has no upload field" "$(hasnt "$P" 'type="file"')"
 P=$(post settings.php -d csrf=$(csrf "$P") -d "display_name=Test ISP" -d company_name=TestNet -d timezone=Africa/Nairobi)

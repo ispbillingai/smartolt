@@ -131,6 +131,37 @@ class Huawei
         return $this->raw('save');
     }
 
+    /** The ONT's hardware and software versions as the OLT reports them. */
+    public function ontVersion(int $frame, int $slot, int $port, int $ontId): array
+    {
+        $this->enterPort($frame, $slot);
+        $kv = self::parseKeyValues($this->raw("display ont version {$port} {$ontId}"));
+        $this->leavePort();
+        return $kv;
+    }
+
+    /** Put the ONT back to factory settings; the OLT pushes its configuration again when it comes back. */
+    public function restoreDefaults(int $frame, int $slot, int $port, int $ontId): void
+    {
+        $this->enterPort($frame, $slot);
+        $this->confirm("ont factory-setting-restore {$port} {$ontId}");
+        $this->leavePort();
+    }
+
+    /** Create a smart VLAN on the OLT, with a description when given. */
+    public function addVlan(int $vlan, string $desc): void
+    {
+        $this->leavePort();
+        $this->raw("vlan {$vlan} smart");
+        if ($desc !== '') $this->raw("vlan desc {$vlan} description \"{$desc}\"");
+    }
+
+    public function deleteVlan(int $vlan): void
+    {
+        $this->leavePort();
+        $this->confirm("undo vlan {$vlan}");
+    }
+
     /** What the OLT holds for one ONT: its ont add line, port settings and service ports. */
     public function runningConfig(int $frame, int $slot, int $port, int $ontId): string
     {
@@ -158,6 +189,20 @@ class Huawei
         'lineprof'  => ['Line profiles', 'display ont-lineprofile gpon all', []],
         'srvprof'   => ['Service profiles', 'display ont-srvprofile gpon all', []],
     ];
+
+    /**
+     * A display command typed on the CLI tab. Only "display ..." is let through, on one line, so the
+     * CLI tab can look at anything but change nothing.
+     */
+    public function displayCommand(string $cmd): string
+    {
+        $cmd = trim(preg_replace('/\s+/', ' ', $cmd));
+        if (!preg_match('/^display [A-Za-z0-9 \/:._-]{1,150}$/', $cmd)) {
+            throw new InvalidArgumentException('Only display commands can be run here, for example: display board 0');
+        }
+        $this->leavePort();
+        return rtrim($this->raw($cmd, true));
+    }
 
     /** Run one DIAG command with numeric parameters and return its output as printed. */
     public function diag(string $key, array $params): string

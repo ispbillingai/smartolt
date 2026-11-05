@@ -30,6 +30,7 @@ if (empty($_SESSION['csrf'])) {
 
 $mgr = new OltManager();
 $mgr->user = (string)($_SESSION['username'] ?? '');
+$mgr->ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
 
 /** Stop a POST that did not come from our own form. */
 function require_csrf(): void

@@ -39,72 +39,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+
 $olts = $mgr->olts();
 $editing = isset($_GET['edit']) ? $mgr->olt((int)$_GET['edit']) : null;
-$openForm = $editing || isset($_GET['add']) || !$olts;
+$showForm = $editing || isset($_GET['add']) || !$olts;
 $isVpn = ($editing['conn_type'] ?? 'vpn') === 'vpn';
+$models = ['MA5608T', 'MA5680T', 'MA5683T', 'MA5800-X2', 'MA5800-X7', 'MA5800-X15', 'MA5800-X17', 'EA5800-X2', 'EA5800-X7', 'EA5800-X15', 'EA5800-X17', 'EA5801-GP08', 'EA5801E-GP16'];
 
-$pageTitle = 'OLTs';
+// Filters on the list
+$fq = trim((string)($_GET['q'] ?? ''));
+$fStatus = (string)($_GET['status'] ?? '');
+$fVpn = (string)($_GET['vpn'] ?? '');
+$list = array_values(array_filter($olts, function ($o) use ($fq, $fStatus, $fVpn) {
+    if ($fq !== '' && stripos($o['name'] . ' ' . $o['host'] . ' ' . $o['lan_ip'] . ' ' . $o['telnet_port'] . ' ' . $o['model'], $fq) === false) return false;
+    if ($fStatus !== '' && ($fStatus === 'online') !== ($o['status'] === 'online')) return false;
+    if ($fVpn !== '' && ($fVpn === 'yes') !== ($o['conn_type'] === 'vpn')) return false;
+    return true;
+}));
+if (isset($_GET['export'])) {
+    csv_download('olts', ['ID', 'Name', 'OLT IP', 'TCP', 'Connection', 'Hardware', 'Software', 'Status', 'ONUs', 'Online'], array_map(function ($o) {
+        return [$o['id'], $o['name'], $o['conn_type'] === 'vpn' ? $o['lan_ip'] : $o['host'], $o['conn_type'] === 'vpn' ? $o['lan_port'] : $o['telnet_port'],
+            $o['conn_type'] === 'vpn' ? 'VPN' : 'Direct', $o['model'], $o['version'], $o['status'], $o['onu_count'], $o['onu_online']];
+    }, $list));
+}
+
+$pageTitle = $showForm ? ($editing ? 'Edit OLT' : 'Add OLT') : 'OLTs';
 include __DIR__ . '/backend/templates/header.php';
 ?>
-<?php echo page_title('OLTs', 'The OLTs SmartOLT logs in to by Telnet. Each one is read every 5 minutes. Supported now: Huawei MA5683T, MA5608T and MA5680T.',
-    '<a href="olts.php?add=1" class="so-btn so-btn-green"><i class="fa fa-plus"></i> Add OLT</a>'); ?>
 <?php echo flash_messages(); ?>
-
-<?php if (!$olts): ?><div class="so-empty">No OLTs found</div><?php else: ?>
-<div class="so-table-wrap"><table class="so-table">
-    <thead><tr><th>ID</th><th>Name</th><th>OLT IP</th><th>Hardware</th><th>Software</th><th>Status</th><th>ONUs</th><th>Last read</th><th class="center">Action</th></tr></thead>
-    <tbody>
-    <?php foreach ($olts as $o): ?>
-        <tr>
-            <td><?php echo (int)$o['id']; ?></td>
-            <td><a href="olt.php?id=<?php echo (int)$o['id']; ?>"><?php echo e($o['name']); ?></a></td>
-            <td class="so-mono" style="font-size:14px"><?php echo e(olt_address($o)); ?></td>
-            <td><?php echo $o['model'] !== '' ? 'Huawei ' . e($o['model']) : '<span class="so-muted">Not read yet</span>'; ?></td>
-            <td style="font-size:14px"><?php echo e($o['version']); ?></td>
-            <td><?php echo $o['status'] === 'online' ? badge('Connected', 'green') : ($o['status'] === 'error' ? badge('Cannot connect', 'red') . '<div class="so-help" style="color:var(--red);max-width:260px">' . e($o['last_error']) . '</div>' : badge('Not read yet', 'grey')); ?></td>
-            <td><a href="onus.php?olt=<?php echo (int)$o['id']; ?>"><?php echo (int)$o['onu_online']; ?> / <?php echo (int)$o['onu_count']; ?></a></td>
-            <td style="font-size:14px"><?php echo $o['last_polled_at'] ? ago($o['last_polled_at']) : 'Never'; ?></td>
-            <td class="center" style="white-space:nowrap">
-                <?php echo btn('View', 'blue', 'olt.php?id=' . (int)$o['id']); ?>
-                <?php echo post_btn('refresh', ['id' => $o['id']], '', 'green', 'refresh', '', 'Reading the OLT. On a big OLT this takes up to a minute...'); ?>
-                <?php echo btn('', 'grey', 'olts.php?edit=' . (int)$o['id'], 'pencil', 'title="Edit"'); ?>
-                <?php echo post_btn('delete', ['id' => $o['id']], '', 'red', 'trash', 'Remove ' . $o['name'] . ' from SmartOLT? Nothing changes on the OLT itself and your customers stay connected.'); ?>
-            </td>
-        </tr>
-    <?php endforeach; ?>
-    </tbody>
-</table></div>
-<?php endif; ?>
-
-<div class="so-modal <?php echo $openForm ? 'show' : ''; ?>" id="oltModal">
-    <form method="POST" class="so-modal-box wide" autocomplete="off" data-busy="Saving and logging in to the OLT...">
-        <div class="so-modal-h"><?php echo $editing ? 'Edit ' . e($editing['name']) : 'Add OLT'; ?> <a href="olts.php" style="color:var(--muted);font-size:22px">&times;</a></div>
-        <div class="so-modal-b">
-            <?php echo csrf_field(); ?><input type="hidden" name="do" value="save"><input type="hidden" name="id" value="<?php echo (int)($editing['id'] ?? 0); ?>">
-            <div class="so-grid2">
-                <div class="so-field"><label class="so-label">Name</label><input class="so-input" name="name" required maxlength="100" placeholder="For example Main OLT" value="<?php echo e($editing['name'] ?? ''); ?>"></div>
-                <div class="so-field"><label class="so-label">Connection</label>
-                    <select name="conn_type" id="connType" class="so-select">
-                        <option value="vpn" <?php echo $isVpn ? 'selected' : ''; ?>>Through the SmartOLT VPN (no public IP needed)</option>
-                        <option value="direct" <?php echo $isVpn ? '' : 'selected'; ?>>Directly, on a public IP or port forward</option>
-                    </select></div>
-                <div class="so-field conn-vpn"><label class="so-label">OLT IP in your network</label><input class="so-input" name="lan_ip" maxlength="45" placeholder="For example 192.168.100.1" value="<?php echo e($editing['lan_ip'] ?? ''); ?>"></div>
-                <div class="so-field conn-vpn"><label class="so-label">OLT Telnet port</label><input class="so-input" name="lan_port" type="number" min="1" max="65535" value="<?php echo (int)($editing['lan_port'] ?? 23); ?>"></div>
-                <div class="so-field conn-direct"><label class="so-label">OLT IP or host name</label><input class="so-input" name="host" maxlength="190" placeholder="Public IP of the OLT or of your router" value="<?php echo e(($editing['conn_type'] ?? '') === 'direct' ? $editing['host'] : ''); ?>"></div>
-                <div class="so-field conn-direct"><label class="so-label">Telnet port</label><input class="so-input" name="telnet_port" type="number" min="1" max="65535" value="<?php echo (int)(($editing['conn_type'] ?? '') === 'direct' ? $editing['telnet_port'] : 23); ?>"></div>
-                <div class="so-field"><label class="so-label">OLT username</label><input class="so-input" name="username" required maxlength="100" value="<?php echo e($editing['username'] ?? ''); ?>"></div>
-                <div class="so-field"><label class="so-label">OLT password</label><input class="so-input" name="password" type="password" maxlength="100" autocomplete="new-password" <?php echo $editing ? 'placeholder="Leave blank to keep the saved one"' : 'required'; ?>></div>
-            </div>
-            <div class="so-alert a-info" style="margin:0">
-                <b>Through the SmartOLT VPN:</b> enter the OLT's own IP as your MikroTik sees it. After saving you get commands to paste into that MikroTik; it connects to SmartOLT by VPN and SmartOLT reaches the OLT through it. Nothing on the OLT is opened to the internet.<br>
-                <b>Directly:</b> the OLT must be reachable from the internet on its public IP, or through a port forward on your router to the OLT's port 23.<br>
-                Use an OLT user that may configure ONUs. The password is stored encrypted.
-            </div>
-        </div>
-        <div class="so-modal-f"><a href="olts.php" class="so-btn so-btn-dark">Cancel</a><button class="so-btn so-btn-green">Save and connect</button></div>
-    </form>
-</div>
+<?php if ($showForm): ?>
+<div class="so-pagehead"><h1><i class="fa fa-server"></i> <?php echo $editing ? 'Edit OLT settings' : 'Add OLT'; ?></h1><?php echo $olts ? btn('Back to OLTs list', 'grey', 'olts.php', 'list') : ''; ?></div>
+<form method="POST" class="so-section so-form" autocomplete="off" data-busy="Saving and logging in to the OLT..." style="max-width:none">
+    <?php echo csrf_field(); ?><input type="hidden" name="do" value="save"><input type="hidden" name="id" value="<?php echo (int)($editing['id'] ?? 0); ?>">
+    <div class="so-row"><label>Name</label><input class="so-input" name="name" required maxlength="100" placeholder="For example Main OLT" value="<?php echo e($editing['name'] ?? ''); ?>"></div>
+    <div class="so-row"><label>Connection</label><select name="conn_type" id="connType" class="so-select">
+        <option value="vpn" <?php echo $isVpn ? 'selected' : ''; ?>>Through the SmartOLT VPN (no public IP needed)</option>
+        <option value="direct" <?php echo $isVpn ? '' : 'selected'; ?>>Directly, on a public IP or port forward</option></select></div>
+    <div class="so-row conn-vpn"><label>OLT IP</label><input class="so-input" name="lan_ip" maxlength="45" placeholder="The OLT's own IP as your MikroTik sees it, for example 192.168.100.2" value="<?php echo e($editing['lan_ip'] ?? ''); ?>"></div>
+    <div class="so-row conn-vpn"><label>Telnet TCP port</label><input class="so-input" name="lan_port" type="number" min="1" max="65535" value="<?php echo (int)($editing['lan_port'] ?? 23); ?>"></div>
+    <div class="so-row conn-direct"><label>OLT IP or FQDN</label><input class="so-input" name="host" maxlength="190" placeholder="Public IP of the OLT or of your router" value="<?php echo e(($editing['conn_type'] ?? '') === 'direct' ? $editing['host'] : ''); ?>"></div>
+    <div class="so-row conn-direct"><label>Telnet TCP port</label><input class="so-input" name="telnet_port" type="number" min="1" max="65535" value="<?php echo (int)(($editing['conn_type'] ?? '') === 'direct' ? $editing['telnet_port'] : 23); ?>"></div>
+    <div class="so-row"><label>Connection protocol</label><select class="so-select" disabled><option>Telnet</option></select></div>
+    <div class="so-row"><label>OLT telnet username</label><input class="so-input" name="username" required maxlength="100" value="<?php echo e($editing['username'] ?? ''); ?>"></div>
+    <div class="so-row"><label>OLT telnet password</label><input class="so-input" name="password" type="password" maxlength="100" autocomplete="new-password" <?php echo $editing ? 'placeholder="Leave blank to keep the saved one"' : 'required'; ?>></div>
+    <div class="so-row"><label>IPTV module</label><label class="so-check"><input type="checkbox" disabled> Enable <span class="so-muted">(not supported yet)</span></label></div>
+    <div class="so-row"><label>Manufacturer</label><select class="so-select" disabled><option>Huawei</option></select></div>
+    <div class="so-row"><label>OLT hardware version</label><select class="so-select" id="hw">
+        <?php foreach ($models as $m): ?><option <?php echo ($editing['model'] ?? 'MA5683T') === $m ? 'selected' : ''; ?>>Huawei-<?php echo $m; ?></option><?php endforeach; ?></select>
+        <div class="so-help">Read from the OLT itself after it connects.</div></div>
+    <div class="so-row"><label></label><div><?php echo olt_picture(16); ?></div></div>
+    <div class="so-row"><label>Supported PON types</label><div style="font-size:14px"><label class="so-check"><input type="radio" checked disabled> GPON</label></div></div>
+    <div class="so-row"><label></label><div class="so-inline" style="justify-content:space-between">
+        <span><button class="so-btn so-btn-green"><i class="fa fa-floppy-o"></i> Save</button> <a href="olts.php" style="margin-left:10px">Cancel</a></span>
+        <span class="so-muted" style="font-size:13px">Saving logs in to the OLT and reads it at once.</span></div></div>
+    <div class="so-alert a-info" style="margin:6px 0 0">
+        <b>Through the SmartOLT VPN:</b> after saving you get commands to paste into the MikroTik the OLT sits behind; it connects to SmartOLT by VPN and SmartOLT reaches the OLT through it. Nothing on the OLT is opened to the internet.
+        <b>Directly:</b> the OLT must be reachable from the internet on its public IP, or through a port forward to its port 23. Use an OLT user that may configure ONUs; the password is stored encrypted.
+    </div>
+</form>
 <script>
 (function () {
     var sel = document.getElementById('connType');
@@ -117,4 +109,42 @@ include __DIR__ . '/backend/templates/header.php';
     show();
 })();
 </script>
+<?php else: ?>
+<?php echo page_title('OLTs', 'Add and manage the OLTs that SmartOLT connects to.',
+    btn('Add OLT', 'green', 'olts.php?add=1', 'plus') . btn('Find config mismatches', 'grey', 'reports.php?r=mismatch', 'search') . btn('Export', 'grey', 'olts.php?export=1', 'upload')); ?>
+<form method="GET" class="so-box" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+    <div><label class="so-label">Search</label><div class="so-search"><i class="fa fa-search"></i><input name="q" value="<?php echo e($fq); ?>" class="so-input" style="width:200px" placeholder="Name, IP, port, model"></div></div>
+    <div><label class="so-label">Status</label><select name="status" class="so-select" style="width:150px" onchange="this.form.submit()"><option value="">Any</option><option value="online" <?php echo $fStatus === 'online' ? 'selected' : ''; ?>>Connected</option><option value="error" <?php echo $fStatus === 'error' ? 'selected' : ''; ?>>Not connected</option></select></div>
+    <div><label class="so-label">VPN</label><select name="vpn" class="so-select" style="width:150px" onchange="this.form.submit()"><option value="">Any</option><option value="yes" <?php echo $fVpn === 'yes' ? 'selected' : ''; ?>>VPN</option><option value="no" <?php echo $fVpn === 'no' ? 'selected' : ''; ?>>Direct</option></select></div>
+    <div><label class="so-label">Vendor</label><select class="so-select" style="width:150px"><option>Any</option><option>Huawei</option></select></div>
+    <a href="olts.php" style="margin-left:auto;color:var(--text);font-weight:700;font-size:14px;padding-bottom:10px"><i class="fa fa-times"></i> Reset filters</a>
+</form>
+<?php if (!$list): ?><div class="so-empty">No OLTs found</div><?php else: ?>
+<div class="so-table-wrap"><table class="so-table" style="font-size:14px">
+    <thead><tr><th>View</th><th>ID</th><th><i class="fa fa-circle"></i></th><th>VPN</th><th>Name</th><th>OLT IP</th><th>TCP</th><th>OLT hardware version</th><th>OLT SW version</th><th>ONUs</th><th>Last read</th><th class="center">Action</th></tr></thead>
+    <tbody>
+    <?php foreach ($list as $o): $v = $o['conn_type'] === 'vpn' ? $mgr->vpnStatus($o) : null; ?>
+        <tr>
+            <td><?php echo btn('View', 'blue', 'olt.php?id=' . (int)$o['id']); ?></td>
+            <td><?php echo (int)$o['id']; ?></td>
+            <td><span class="so-dot<?php echo $o['status'] === 'online' ? '' : ' off'; ?>" title="<?php echo $o['status'] === 'online' ? 'Connected' : e($o['last_error'] ?: 'Not read yet'); ?>" <?php echo $o['status'] === 'error' ? 'style="background:var(--red)"' : ''; ?>></span></td>
+            <td><?php echo $v === null ? '<span class="so-muted">-</span>' : '<a href="olt.php?id=' . (int)$o['id'] . '#vpn" title="' . ($v['connected'] ? 'Connected' : 'Router not connected') . '" style="color:' . ($v['connected'] ? 'var(--green)' : 'var(--red)') . '"><i class="fa fa-' . ($v['connected'] ? 'check' : 'times') . '-circle"></i><br><small>Tunnel</small></a>'; ?></td>
+            <td><?php echo e($o['name']); ?></td>
+            <td class="so-mono"><?php echo e($o['conn_type'] === 'vpn' ? $o['lan_ip'] : $o['host']); ?></td>
+            <td><?php echo (int)($o['conn_type'] === 'vpn' ? $o['lan_port'] : $o['telnet_port']); ?></td>
+            <td><?php echo $o['model'] !== '' ? 'Huawei-' . e($o['model']) : '<span class="so-muted">Not detected yet</span>'; ?></td>
+            <td><?php echo $o['version'] !== '' ? e($o['version']) : '<span class="so-muted">Not detected yet</span>'; ?></td>
+            <td><a href="onus.php?olt=<?php echo (int)$o['id']; ?>"><?php echo (int)$o['onu_online']; ?> / <?php echo (int)$o['onu_count']; ?></a></td>
+            <td><?php echo $o['last_polled_at'] ? ago($o['last_polled_at']) : 'Never'; ?></td>
+            <td class="center" style="white-space:nowrap">
+                <?php echo post_btn('refresh', ['id' => $o['id']], '', 'grey', 'refresh', '', 'Reading the OLT. On a big OLT this takes up to a minute...'); ?>
+                <?php echo btn('', 'grey', 'olts.php?edit=' . (int)$o['id'], 'pencil', 'title="Edit"'); ?>
+                <?php echo post_btn('delete', ['id' => $o['id']], '', 'red', 'trash', 'Remove ' . $o['name'] . ' from SmartOLT? Nothing changes on the OLT itself and your customers stay connected.'); ?>
+            </td>
+        </tr>
+    <?php endforeach; ?>
+    </tbody>
+</table></div>
+<?php endif; ?>
+<?php endif; ?>
 <?php include __DIR__ . '/backend/templates/footer.php'; ?>

@@ -167,7 +167,7 @@ include __DIR__ . '/backend/templates/header.php';
                 <summary><i class="fa fa-caret-right"></i><i class="fa fa-<?php echo $icon; ?>" style="color:<?php echo $color; ?>"></i> <?php echo $label; ?>
                     <?php echo $n ? badge((string)$n, 'red') : '<i class="fa fa-check-circle" style="color:var(--green)"></i>'; ?></summary>
                 <div class="so-acc-b">
-                    <?php if (!$n): ?><span class="so-muted">Nothing right now.</span><?php endif; ?>
+                    <?php if (!$n): ?><span style="color:var(--green)"><i class="fa fa-check-circle"></i></span> <span class="so-muted"><?php echo $key === 'variations' ? 'Optical signals are stable.' : 'All clear. No active alerts.'; ?></span><?php endif; ?>
                     <?php if ($key === 'variations'): foreach ($out['variations'] as $u): ?>
                         <div><a href="onu.php?id=<?php echo (int)$u['id']; ?>"><?php echo e($u['description']); ?></a> <?php echo e($u['olt_name']); ?>: now <?php echo number_format((float)$u['rx_power'], 2); ?> dBm, usually <?php echo number_format((float)$u['avg_rx'], 2); ?> dBm</div>
                     <?php endforeach; elseif ($key === 'na'): foreach ($out['na'] as $u): ?>
@@ -180,6 +180,9 @@ include __DIR__ . '/backend/templates/header.php';
             </details>
         <?php endforeach;
         echo panel_close(); ?>
+        <?php echo panel_open('ONU authorizations per day', '<a href="reports.php?r=auth">Authorizations</a>', 'bar-chart'); ?>
+            <canvas id="authChart" height="90"></canvas>
+        <?php echo panel_close(); ?>
     </div>
     <div>
         <?php echo panel_open('Info', '', 'info-circle'); ?>
@@ -189,7 +192,7 @@ include __DIR__ . '/backend/templates/header.php';
                     <li><span><i class="fa fa-<?php echo $a['ok'] ? 'lock' : 'exclamation-triangle'; ?>"></i> <?php echo e(action_text($a)); ?></span><i class="ago"><?php echo ago($a['created_at']); ?></i></li>
                 <?php endforeach; ?>
             </ul>
-            <?php if ($info): ?><a href="events.php">All events</a><?php endif; ?>
+            <a href="info.php" class="so-btn so-btn-grey" style="display:flex;width:100%;margin-top:6px">View All Info</a>
         <?php echo panel_close(); ?>
     </div>
 </div>
@@ -212,6 +215,16 @@ include __DIR__ . '/backend/templates/header.php';
     var mg = document.getElementById('moreGraphs'), mgm = document.getElementById('moreGraphsMenu');
     mg.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); mgm.style.display = mgm.style.display === 'block' ? 'none' : 'block'; });
     document.addEventListener('click', function () { mgm.style.display = 'none'; });
+
+    var auth = <?php echo json_encode($mgr->authorizationsPerDay(14)); ?>, authChart;
+    function buildAuth() {
+        if (authChart) authChart.destroy();
+        authChart = new Chart(document.getElementById('authChart').getContext('2d'), { type: 'bar',
+            data: { labels: Object.keys(auth).map(function (d) { return d.slice(8, 10) + '-' + d.slice(5, 7); }), datasets: [{ label: 'ONUs authorized', data: Object.values(auth), backgroundColor: '#1471e6' }] },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: soChart.tick() }, grid: { display: false } }, y: { beginAtZero: true, ticks: { color: soChart.tick(), precision: 0 }, grid: { color: soChart.grid() } } } } });
+    }
+    buildAuth();
+    window.addEventListener('themechange', buildAuth);
 
     var el = document.getElementById('netChart');
     if (!el) return;

@@ -32,4 +32,9 @@ foreach ($due as $olt) {
 // Once an hour, drop history older than it is kept.
 if ((int)date('i') < 5) {
     $mgr->prune();
+    // Keep in sync, when the ISP turned it on: once a day, early morning.
+    if ((int)date('G') === 3 && $mgr->autoSyncOn()) {
+        [$done, $failed] = $mgr->runAutoSync();
+        printf("%s auto sync: %d resynced%s\n", OltManager::now(), $done, $failed ? ', failed: ' . implode('; ', $failed) : '');
+    }
 }
