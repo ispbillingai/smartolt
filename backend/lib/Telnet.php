@@ -12,6 +12,7 @@ class Telnet
     /** @var resource|null */
     private $sock = null;
     private string $buffer = '';
+    private string $negotiation = '';
     private string $log = '';
     private int $commandTimeout;
 
@@ -54,8 +55,16 @@ class Telnet
     public function write(string $text, bool $secret = false): void
     {
         $this->log .= $secret ? "********\n" : $text;
-        if (@fwrite($this->sock, $text) === false) {
-            throw new TelnetError('The OLT closed the connection.');
+        $deadline = microtime(true) + $this->commandTimeout;
+        while ($text !== '') {
+            $written = @fwrite($this->sock, $text);
+            if ($written === false || feof($this->sock)) throw new TelnetError('The OLT closed the connection.');
+            if ($written === 0) {
+                if (microtime(true) > $deadline) throw new TelnetError('The OLT did not accept the command in time.');
+                usleep(10000);
+            } else {
+                $text = substr($text, $written);
+            }
         }
     }
 
@@ -103,16 +112,22 @@ class Telnet
         if ($data === '') {
             return;
         }
+        // Negotiations may be split at any TCP packet boundary, even between IAC and its option.
+        $data = $this->negotiation . $data;
+        $this->negotiation = '';
         $out = '';
         $len = strlen($data);
         for ($i = 0; $i < $len; $i++) {
             $c = $data[$i];
-            if ($c !== self::IAC || $i + 1 >= $len) {
+            if ($c !== self::IAC) {
                 $out .= $c;
                 continue;
             }
+            $start = $i;
+            if ($i + 1 >= $len) { $this->negotiation = substr($data, $start); break; }
             $cmd = $data[++$i];
-            if (($cmd === self::DO || $cmd === self::DONT || $cmd === self::WILL || $cmd === self::WONT) && $i + 1 < $len) {
+            if ($cmd === self::DO || $cmd === self::DONT || $cmd === self::WILL || $cmd === self::WONT) {
+                if ($i + 1 >= $len) { $this->negotiation = substr($data, $start); break; }
                 $opt = $data[++$i];
                 if ($cmd === self::DO) {
                     @fwrite($this->sock, self::IAC . self::WONT . $opt);
@@ -123,7 +138,12 @@ class Telnet
                 }
             } elseif ($cmd === self::SB) {
                 $end = strpos($data, self::IAC . self::SE, $i);
-                $i = $end === false ? $len : $end + 1;
+                if ($end === false) {
+                    $this->negotiation = substr($data, $start);
+                    if (strlen($this->negotiation) > 65536) throw new TelnetError('The OLT sent an invalid Telnet negotiation.');
+                    break;
+                }
+                $i = $end + 1;
             } elseif ($cmd === self::IAC) {
                 $out .= self::IAC;
             }

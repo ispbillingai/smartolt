@@ -5,7 +5,7 @@
 
 class Schema
 {
-    const VERSION = 5;
+    const VERSION = 7;
 
     public static function ensure(PDO $db): void
     {
@@ -301,5 +301,40 @@ class Schema
         }
         // "wifi" now counts SSIDs; older rows stored 1 for "has WiFi".
         $db->exec('UPDATE onu_types SET wifi=4 WHERE wifi=1');
+    }
+
+    /** Optional read-only SNMP monitoring, with its own health independent of Telnet. */
+    private static function v6(PDO $db): void
+    {
+        $db->exec("CREATE TABLE IF NOT EXISTS `snmp_samples` (
+            `id` bigint unsigned NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`),
+            `olt_id` int unsigned NOT NULL, `if_index` int unsigned NOT NULL, `at` datetime NOT NULL,
+            `rx_bps` double DEFAULT NULL, `tx_bps` double DEFAULT NULL,
+            KEY `olt_at` (`olt_id`, `at`),
+            CONSTRAINT `fk_snmp_olt` FOREIGN KEY (`olt_id`) REFERENCES `olts` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        foreach ([
+            'snmp_enabled' => 'tinyint(1) NOT NULL DEFAULT 0',
+            'snmp_port' => 'smallint unsigned NOT NULL DEFAULT 161',
+            'snmp_community_enc' => 'text',
+            'snmp_json' => 'mediumtext',
+            'snmp_status' => "varchar(20) NOT NULL DEFAULT 'disabled'",
+            'snmp_error' => "varchar(500) NOT NULL DEFAULT ''",
+            'snmp_checked_at' => 'datetime DEFAULT NULL',
+        ] as $col => $def) {
+            self::addColumn($db, 'olts', $col, $def);
+        }
+    }
+
+    /** Configuration snapshots can contain device credentials, so only ciphertext is stored. */
+    private static function v7(PDO $db): void
+    {
+        $db->exec("CREATE TABLE IF NOT EXISTS `config_backups` (
+            `id` bigint unsigned NOT NULL AUTO_INCREMENT, `olt_id` int unsigned NOT NULL,
+            `config_enc` longtext NOT NULL, `sha256` char(64) NOT NULL, `bytes` int unsigned NOT NULL,
+            `created_by` varchar(60) NOT NULL DEFAULT '', `created_at` datetime NOT NULL,
+            PRIMARY KEY (`id`), KEY `olt_created` (`olt_id`, `created_at`),
+            CONSTRAINT `fk_backups_olt` FOREIGN KEY (`olt_id`) REFERENCES `olts` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
 }

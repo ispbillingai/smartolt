@@ -128,7 +128,7 @@ class Huawei
     public function saveConfig(): string
     {
         $this->leavePort();
-        return $this->raw('save');
+        return $this->confirm('save');
     }
 
     /** The ONT's hardware and software versions as the OLT reports them. */
@@ -274,6 +274,11 @@ class Huawei
     {
         $this->leavePort();
         $out = $this->raw('display ont info 0 all', true);
+        if (($error = self::findError($out)) !== null) {
+            // An empty OLT is a valid first installation; unsupported commands/access failures are not.
+            if (preg_match('/(?:required\s+)?ONT(?:s)?\s+(?:does?|do)\s+not\s+exist/i', $error)) return [];
+            throw new OltError($error);
+        }
         return self::parseOntInfo($out);
     }
 

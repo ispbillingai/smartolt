@@ -14,6 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tab = isset($tabs[$_POST['tab'] ?? '']) ? $_POST['tab'] : $tab;
     try {
         switch ($_POST['do'] ?? '') {
+            case 'snmp':
+                $target = $mgr->olt($id);
+                if (!$target) throw new InvalidArgumentException('OLT not found.');
+                $result = $mgr->pollSnmp($target);
+                back($here . 'uplink', $result['status'] === 'online' ? 'success' : 'error', $result['status'] === 'online' ? 'SNMP read completed.' : ($result['error'] ?? 'SNMP is disabled.'));
             case 'vlan_add':
                 $mgr->setVlan($id, (int)($_POST['vlan'] ?? 0), true, (string)($_POST['desc'] ?? ''));
                 back($here . 'vlans', 'success', 'VLAN ' . (int)$_POST['vlan'] . ' added on the OLT. Tag it on your uplink port too, so it reaches your router.');
@@ -88,6 +93,8 @@ include __DIR__ . '/backend/templates/header.php';
                     <?php echo $vpn['connected'] ? '<span style="color:var(--green)">VPN connected</span>' : '<span style="color:var(--red)">VPN disconnected</span> <a href="#vpn">Diagnose</a>'; ?>
                     <?php else: ?>Direct, Telnet to <?php echo e($olt['host'] . ':' . $olt['telnet_port']); ?><?php endif; ?></td></tr>
                 <tr><td>Connection protocol</td><td>Telnet</td></tr>
+                <tr><td>SNMP monitoring</td><td><?php echo empty($olt['snmp_enabled']) ? 'Disabled' : badge($olt['snmp_status'], $olt['snmp_status'] === 'online' ? 'green' : 'orange') . ' · UDP ' . (int)$olt['snmp_port'] . ' · <a href="' . e($here . 'uplink') . '">Test and view interfaces</a>'; ?></td></tr>
+                <?php if (!empty($olt['snmp_enabled'])): ?><tr><td>SNMP last checked</td><td><?php echo e($olt['snmp_checked_at'] ?: 'Not checked yet'); ?><?php if ($olt['snmp_error']) echo '<br>' . e($olt['snmp_error']); ?></td></tr><?php endif; ?>
                 <tr><td>Telnet TCP port</td><td><?php echo (int)($olt['conn_type'] === 'vpn' ? $olt['lan_port'] : $olt['telnet_port']); ?></td></tr>
                 <tr><td>OLT telnet username</td><td><?php echo e($olt['username']); ?></td></tr>
                 <tr><td>OLT telnet password</td><td><?php echo $masked; ?></td></tr>
@@ -163,7 +170,7 @@ include __DIR__ . '/backend/templates/header.php';
 
 <?php elseif ($tab === 'uplink'): ?>
 <div class="so-inline" style="margin-bottom:14px"><?php echo btn('Run display command', 'blue', $here . 'cli'); ?></div>
-<p class="so-muted">Uplink port traffic is not read by SmartOLT yet. To look at an uplink port now, open the CLI tab and run for example <span class="so-mono">display port state 0/9/0</span>.</p>
+<?php include __DIR__ . '/backend/templates/snmp.php'; ?>
 
 <?php elseif ($tab === 'vlans'): ?>
 <div class="so-inline" style="margin-bottom:8px"><button type="button" class="so-btn so-btn-blue" data-open="vlanModal"><i class="fa fa-plus"></i> Add VLAN</button></div>

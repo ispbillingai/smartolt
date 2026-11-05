@@ -84,6 +84,7 @@
             <?php endif; ?>
 
             <form class="space-y-4" method="POST">
+                <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($_SESSION['csrf'], ENT_QUOTES, 'UTF-8'); ?>">
                 <div>
                     <label for="new_password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">New Password</label>
                     <input id="new_password" name="new_password" type="password" required

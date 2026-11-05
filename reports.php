@@ -66,6 +66,30 @@ if ($r === 'pon' && isset($_GET['csv'])) {
     }, $mgr->ponOccupancy((int)$g('olt'))));
 }
 
+// Prepare downloadable reports before emitting the page header: HTML must never prefix CSV.
+if ($r === 'auth') {
+    $pon = in_array($g('pon_type'), ['GPON', 'EPON'], true) ? $g('pon_type') : '';
+    $rows = $pon === 'EPON' ? [] : $mgr->actionsFiltered(['action' => 'onu.authorize', 'ok' => 1, 'user' => $g('user'), 'q' => $g('q'), 'from' => $g('from'), 'to' => $g('to')], 2000);
+    if (isset($_GET['csv'])) {
+        csv_download('authorizations', ['User', 'SN', 'PON port', 'Name', 'PON', 'Date'], array_map(function ($a) { $p = explode(' ', $a['target']); return [$a['source'] === 'auto' ? 'Auto action' : $a['user'], $p[1] ?? '', $p[0], $a['message'] === 'ok' ? '' : $a['message'], 'GPON', $a['created_at']]; }, $rows));
+    }
+} elseif ($r === 'status') {
+    $period = (int)($g('period') ?: 24);
+    $period = in_array($period, [24, 168, 720], true) ? $period : 24;
+    $from = $g('from') ?: date('Y-m-d H:i:s', time() - $period * 3600);
+    $rows = $mgr->statusChanges(['olt_id' => (int)$g('olt'), 'state' => $g('state'), 'from' => $from, 'to' => $g('to')], 2000);
+    $zoneId = (int)$g('zone'); $q = $g('q');
+    if ($zoneId || $q !== '' || $g('board') !== '' || $g('port') !== '') {
+        $ids = array_flip(array_column($mgr->listOnus(['zone_id' => $zoneId, 'q' => $q, 'board' => $g('board'), 'port_no' => $g('port')]), 'id'));
+        $rows = array_values(array_filter($rows, function ($e) use ($ids) { return isset($ids[$e['onu_id']]); }));
+    }
+    if (isset($_GET['csv'])) csv_download('status-changes', ['Date', 'ONU', 'SN', 'OLT', 'Place', 'Became', 'Cause'], array_map(function ($e) { return [$e['at'], $e['description'], $e['sn'], $e['olt_name'], onu_place($e), status_label($e['state']), $e['cause']]; }, $rows));
+} elseif ($r === 'splitters') {
+    $far = max(1, (int)($g('far') ?: 300));
+    $res = $mgr->onuSplitterCheck(['reason' => $g('reason'), 'olt_id' => (int)$g('olt'), 'board' => $g('board'), 'port_no' => $g('port'), 'zone_id' => (int)$g('zone'), 'sector_id' => (int)$g('sector')], $far);
+    if (isset($_GET['csv'])) csv_download('splitter-check', ['Name', 'SN', 'OLT', 'ONU', 'Zone', 'Splitter', 'Problem', 'Distance m'], array_map(function ($u) { return [$u['description'], $u['sn'], $u['olt_name'], onu_place($u), $u['zone_name'], $u['odb_name'], $u['reason'] === 'none' ? 'No splitter' : 'Far from splitter', $u['distance']]; }, $res['rows']));
+}
+
 $pageTitle = $reports[$r];
 include __DIR__ . '/backend/templates/header.php';
 $reset = function () use ($r) { return '<a href="reports.php?r=' . $r . '" style="color:var(--text);font-weight:700;font-size:14px"><i class="fa fa-times"></i> Reset filters</a>'; };
@@ -81,11 +105,6 @@ $num = function (array $nums, string $cur) {
 <?php echo flash_messages(); ?>
 
 <?php if ($r === 'auth'):
-    $pon = in_array($g('pon_type'), ['GPON', 'EPON'], true) ? $g('pon_type') : '';
-    $rows = $pon === 'EPON' ? [] : $mgr->actionsFiltered(['action' => 'onu.authorize', 'ok' => 1, 'user' => $g('user'), 'q' => $g('q'), 'from' => $g('from'), 'to' => $g('to')], 2000);
-    if (isset($_GET['csv'])) {
-        csv_download('authorizations', ['User', 'SN', 'PON port', 'Name', 'PON', 'Date'], array_map(function ($a) { $p = explode(' ', $a['target']); return [$a['source'] === 'auto' ? 'Auto action' : $a['user'], $p[1] ?? '', $p[0], $a['message'] === 'ok' ? '' : $a['message'], 'GPON', $a['created_at']]; }, $rows));
-    }
     $snName = [];
     foreach ($mgr->listOnus([]) as $u) $snName[$u['sn']] = $u; ?>
     <div class="so-tabbar" style="margin-top:0"><a class="on"><i class="fa fa-list"></i> Authorizations</a></div>
@@ -114,6 +133,9 @@ $num = function (array $nums, string $cur) {
         <div class="so-panel-h"><span>ONU database export</span></div>
         <div class="so-panel-b">
             <input type="hidden" name="r" value="export"><input type="hidden" name="download" value="1">
+            <?php foreach (['odb', 'type', 'speed', 'sector', 'vlan', 'pon', 'q', 'mode', 'signal', 'status'] as $key):
+                if ($g($key) !== '') echo '<input type="hidden" name="' . $key . '" value="' . e($g($key)) . '">';
+            endforeach; ?>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
                 <div><label class="so-label">OLT</label><select name="olt" class="so-select" style="width:180px"><option value="">Any</option><?php echo olt_options($olts, $exportFilter['olt_id'] ?: ''); ?></select></div>
                 <div><label class="so-label">Board</label><select name="board" class="so-select" style="width:100px"><?php echo $num(range(0, 21), $exportFilter['board']); ?></select></div>
@@ -155,16 +177,7 @@ $num = function (array $nums, string $cur) {
         ? 'Traffic per ONU is not read from the OLT yet; your billing dashboard shows each customer\'s data use from the router.'
         : 'WiFi signal is read from the ONU itself over TR069, which is not connected to SmartOLT yet.'; ?></div>
 
-<?php elseif ($r === 'status'):
-    $period = (int)($g('period') ?: 24);
-    $from = $g('from') ?: date('Y-m-d', time() - $period * 3600);
-    $rows = $mgr->statusChanges(['olt_id' => (int)$g('olt'), 'state' => $g('state'), 'from' => $from, 'to' => $g('to')], 2000);
-    $zoneId = (int)$g('zone'); $q = $g('q');
-    if ($zoneId || $q !== '' || $g('board') !== '' || $g('port') !== '') {
-        $ids = array_flip(array_column($mgr->listOnus(['zone_id' => $zoneId, 'q' => $q, 'board' => $g('board'), 'port_no' => $g('port')]), 'id'));
-        $rows = array_values(array_filter($rows, function ($e) use ($ids) { return isset($ids[$e['onu_id']]); }));
-    }
-    if (isset($_GET['csv'])) csv_download('status-changes', ['Date', 'ONU', 'SN', 'OLT', 'Place', 'Became', 'Cause'], array_map(function ($e) { return [$e['at'], $e['description'], $e['sn'], $e['olt_name'], onu_place($e), status_label($e['state']), $e['cause']]; }, $rows)); ?>
+<?php elseif ($r === 'status'): ?>
     <form method="GET" class="so-box"><input type="hidden" name="r" value="status">
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
             <div><label class="so-label">Search</label><div class="so-search"><i class="fa fa-search"></i><input name="q" value="<?php echo e($q); ?>" class="so-input" style="width:170px" placeholder="SN, MAC, IP, name"></div></div>
@@ -212,9 +225,7 @@ $num = function (array $nums, string $cur) {
     </tbody></table></div>
     <?php endif; ?>
 
-<?php elseif ($r === 'splitters'): $far = max(1, (int)($g('far') ?: 300));
-    $res = $mgr->onuSplitterCheck(['reason' => $g('reason'), 'olt_id' => (int)$g('olt'), 'board' => $g('board'), 'port_no' => $g('port'), 'zone_id' => (int)$g('zone'), 'sector_id' => (int)$g('sector')], $far);
-    if (isset($_GET['csv'])) csv_download('splitter-check', ['Name', 'SN', 'OLT', 'ONU', 'Zone', 'Splitter', 'Problem', 'Distance m'], array_map(function ($u) { return [$u['description'], $u['sn'], $u['olt_name'], onu_place($u), $u['zone_name'], $u['odb_name'], $u['reason'] === 'none' ? 'No splitter' : 'Far from splitter', $u['distance']]; }, $res['rows']));
+<?php elseif ($r === 'splitters'):
     $bad = array_filter($mgr->splitterCheck(), function ($d) { return $d['issues']; }); ?>
     <form method="GET" class="so-box" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end"><input type="hidden" name="r" value="splitters">
         <?php echo $sel('reason', 'Reason', '<option value="">Any</option><option value="none"' . ($g('reason') === 'none' ? ' selected' : '') . '>Without a splitter</option><option value="far"' . ($g('reason') === 'far' ? ' selected' : '') . '>Far from the splitter</option>', '170px'); ?>

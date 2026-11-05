@@ -2,10 +2,11 @@
 // End to end test: api.php against the fake OLT. Needs a site whose backend/config/database.php
 // points at an empty database loaded from install.sql.
 //   php tests/fake_olt.php 47023
+//   php tests/fake_snmp.php 47161
 //   php -S 127.0.0.1:8099            (from the site folder)
 //   php tests/api_test.php http://127.0.0.1:8099/api.php 127.0.0.1 47023 <subdomain> <fleet secret>
 
-[$_, $api, $oltHost, $oltPort, $sub, $fleetSecret] = $argv + [null, null, '127.0.0.1', '47023', 'demo', ''];
+[$_, $api, $oltHost, $oltPort, $sub, $fleetSecret, $snmpPort] = $argv + [null, null, '127.0.0.1', '47023', 'demo', '', '47161'];
 $token = null;
 $fails = 0;
 
@@ -59,12 +60,39 @@ $r = call('olt.save', ['name' => 'Main OLT', 'host' => $oltHost, 'telnet_port' =
 check('save OLT', !empty($r['id']), $r);
 $oltId = $r['id'];
 
+$r = call('olt.save', ['name' => 'SNMP missing community', 'host' => $oltHost, 'username' => 'root', 'password' => 'admin123', 'snmp_enabled' => 1]);
+check('SNMP requires a community when enabled', !$r['ok'] && $r['_http'] === 400, $r);
+$r = call('olt.save', ['id' => $oltId, 'name' => 'Main OLT', 'host' => $oltHost, 'telnet_port' => (int)$oltPort, 'username' => 'root', 'snmp_port' => 70000]);
+check('invalid SNMP port refused', !$r['ok'] && $r['_http'] === 400, $r);
+$r = call('olt.snmp', ['id' => $oltId]);
+check('disabled SNMP is explicitly reported', !$r['ok'] && $r['_http'] === 400 && ($r['snmp']['status'] ?? '') === 'disabled', $r);
+$r = call('olt.snmp', ['id' => 999999]);
+check('SNMP on an unknown OLT is a 404', $r['_http'] === 404, $r);
+
 $r = call('olt.refresh', ['id' => $oltId]);
 check('refresh reads the OLT', $r['ok'] && ($r['summary']['onus'] ?? 0) === 4 && ($r['summary']['waiting'] ?? 0) === 2, $r);
 check('model and version read', ($r['olt']['model'] ?? '') === 'MA5683T' && ($r['olt']['version'] ?? '') === 'MA5600V800R018C10', $r['olt'] ?? $r);
 check('boards read through the More pager', count(array_filter($r['olt']['boards'] ?? [], function ($b) { return $b['gpon']; })) === 2, $r['olt']['boards'] ?? null);
 check('profiles and VLANs read', count($r['olt']['profiles']['line'] ?? []) === 2 && count($r['olt']['profiles']['srv'] ?? []) === 2 && count($r['olt']['profiles']['vlans'] ?? []) === 2, $r['olt']['profiles'] ?? null);
 check('password never returned', !isset($r['olt']['password_enc']));
+
+$r = call('olt.save', ['id' => $oltId, 'name' => 'Main OLT', 'host' => $oltHost, 'telnet_port' => (int)$oltPort, 'username' => 'root', 'snmp_enabled' => 1, 'snmp_port' => (int)$snmpPort, 'snmp_community' => 'test-read']);
+check('save SNMP monitoring configuration', $r['ok'], $r);
+$r = call('olt.snmp', ['id' => $oltId]);
+check('SNMP reads system and interfaces over UDP', $r['ok'] && ($r['snmp']['status'] ?? '') === 'online' && count($r['snmp']['interfaces'] ?? []) === 2, $r);
+$r = call('olt.snmp', ['id' => $oltId]);
+check('second SNMP poll derives traffic rates', $r['ok'] && ($r['snmp']['interfaces'][0]['rx_bps'] ?? null) === 0, $r);
+$r = call('olt.save', ['id' => $oltId, 'name' => 'Main OLT', 'host' => $oltHost, 'telnet_port' => (int)$oltPort, 'username' => 'root', 'snmp_community' => '']);
+$r = call('olt.snmp', ['id' => $oltId]);
+check('blank community on edit preserves the working secret', $r['ok'], $r);
+
+// SNMP failure must not turn a reachable Telnet OLT into an offline one.
+$r = call('olt.save', ['id' => $oltId, 'name' => 'Main OLT', 'host' => $oltHost, 'telnet_port' => (int)$oltPort, 'username' => 'root', 'snmp_enabled' => 1, 'snmp_port' => 1, 'snmp_community' => 'fixture-secret']);
+check('SNMP settings can be enabled', $r['ok'], $r);
+$r = call('olt.snmp', ['id' => $oltId]);
+check('unreachable SNMP is reported separately', !$r['ok'] && $r['_http'] === 502 && ($r['snmp']['status'] ?? '') === 'error' && ($r['olt']['status'] ?? '') === 'online', $r);
+check('SNMP community never returned', !isset($r['olt']['snmp_community_enc']) && strpos(json_encode($r), 'fixture-secret') === false, $r);
+call('olt.save', ['id' => $oltId, 'name' => 'Main OLT', 'host' => $oltHost, 'telnet_port' => (int)$oltPort, 'username' => 'root', 'snmp_enabled' => 0]);
 
 $r = call('onu.list', ['olt_id' => $oltId]);
 $byDesc = array_column($r['onus'] ?? [], null, 'description');

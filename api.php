@@ -92,6 +92,15 @@ try {
             }
             out(['ok' => true, 'summary' => $summary, 'olt' => OltManager::publicOlt($mgr->olt($id))]);
 
+        case 'olt.snmp':
+            $olt = $mgr->olt($id);
+            if (!$olt) fail('OLT not found.', 404);
+            $snmp = $mgr->pollSnmp($olt);
+            $ok = in_array($snmp['status'] ?? '', ['online', 'partial'], true);
+            $code = $ok ? 200 : (($snmp['status'] ?? '') === 'disabled' ? 400 : (($snmp['status'] ?? '') === 'busy' ? 409 : 502));
+            out(['ok' => $ok, 'snmp' => $snmp, 'olt' => OltManager::publicOlt($mgr->olt($id))]
+                + ($ok ? [] : ['error' => $snmp['error'] ?? 'SNMP could not be read.']), $code);
+
         case 'onu.unconfigured':
             $oltId = (int)($in['olt_id'] ?? 0);
             $onus = $mgr->autofind($oltId);

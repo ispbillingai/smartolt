@@ -3,10 +3,10 @@
 # SmartOLT can reach an OLT that has no public IP.
 #   sudo bash vpn/setup_openvpn.sh
 #
-# Each OLT gets its own login and a fixed tunnel IP (17.0.x.y), made by /usr/local/sbin/smartolt-vpn
+# Each OLT gets its own login and a fixed private tunnel IP, made by /usr/local/sbin/smartolt-vpn
 # when the ISP chooses "Through the SmartOLT VPN" for an OLT. On the router a dst-nat sends
-# <tunnel IP>:2323 to the OLT's own IP port 23. 17.0.0.0/16 is used, not 16.0.0.0/16, so a router that
-# also has the Hotspot AP tunnel (16.x) does not get two routes for one network.
+# TCP <tunnel IP>:2323 to Telnet, and (when enabled) UDP :2161 to SNMP.
+# New installations use 10.253.0.0/16. Existing networks are kept to avoid breaking installed routers.
 # Safe to run again: existing keys, logins and fixed IPs are kept.
 
 set -euo pipefail
@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DIR=/etc/openvpn/server
 PKI=/etc/openvpn/smartolt-pki
 
-apt-get install -y -q openvpn easy-rsa netcat-openbsd >/dev/null
+apt-get install -y -q openvpn easy-rsa netcat-openbsd iptables gawk util-linux >/dev/null
 
 # Keys: a CA and the server certificate. Routers log in with a username and password, no client cert.
 if [ ! -f "$PKI/pki/issued/server.crt" ]; then
@@ -32,8 +32,21 @@ fi
 
 # Logins and fixed IPs under /var/lib: the sites' PHP-FPM runs with /etc read-only (ProtectSystem).
 DATA=/var/lib/smartolt-vpn
-mkdir -p "$DATA/ccd" /var/log/openvpn
+mkdir -p "$DATA/ccd" /var/log/openvpn "$DIR" /usr/local/libexec
 chmod 700 "$DATA"
+# Preserve the live network on upgrade. Never silently renumber installed clients.
+if [ ! -f "$DATA/network" ]; then
+    prefix=10.253
+    if [ -f "$DIR/smartolt.conf" ]; then
+        previous=$(awk '$1 == "server" { split($2, ip, "."); print ip[1] "." ip[2]; exit }' "$DIR/smartolt.conf")
+        [ -z "$previous" ] || prefix="$previous"
+    elif grep -q '^ifconfig-push 17\.0\.' "$DATA"/ccd/* 2>/dev/null; then
+        prefix=17.0
+    fi
+    printf '%s\n' "$prefix" > "$DATA/network"
+fi
+read -r prefix < "$DATA/network"
+[[ "$prefix" =~ ^(10\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])|192\.168|17\.0)$ && "${prefix#*.}" -le 255 ]] || { echo "Invalid VPN network prefix" >&2; exit 1; }
 install -m 600 "$PKI/pki/ca.crt" "$DIR/smartolt-ca.crt"
 install -m 600 "$PKI/pki/issued/server.crt" "$DIR/smartolt-server.crt"
 install -m 600 "$PKI/pki/private/server.key" "$DIR/smartolt-server.key"
@@ -44,6 +57,7 @@ chmod 600 "$DATA/users"
 install -m 755 "$HERE/smartolt-auth.sh" "$DIR/smartolt-auth.sh"
 install -m 755 "$HERE/smartolt-fw.sh" "$DIR/smartolt-fw.sh"
 install -m 750 "$HERE/smartolt-vpn" /usr/local/sbin/smartolt-vpn
+install -m 644 "$HERE/smartolt-vpn-status.awk" /usr/local/libexec/smartolt-vpn-status.awk
 # The SmartOLT sites run as www-data and may only call this one helper as root.
 echo 'www-data ALL=(root) NOPASSWD: /usr/local/sbin/smartolt-vpn' > /etc/sudoers.d/smartolt-vpn
 chmod 440 /etc/sudoers.d/smartolt-vpn
@@ -56,7 +70,7 @@ proto tcp-server
 dev tun-smartolt
 dev-type tun
 topology subnet
-server 17.0.0.0 255.255.0.0
+server SMARTOLT_NETWORK.0.0 255.255.0.0 nopool
 # Only logins made by smartolt-vpn (each has a ccd file with its fixed IP) may connect.
 client-config-dir /var/lib/smartolt-vpn/ccd
 ccd-exclusive
@@ -81,6 +95,7 @@ status /var/log/openvpn/smartolt-status.log 20
 status-version 2
 verb 3
 EOF
+sed -i "s/SMARTOLT_NETWORK/$prefix/" "$DIR/smartolt.conf"
 
 systemctl enable --now openvpn-server@smartolt >/dev/null 2>&1 || true
 systemctl restart openvpn-server@smartolt

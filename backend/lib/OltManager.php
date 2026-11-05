@@ -4,6 +4,8 @@
 // zone, ODB and ONU type lists.
 
 require_once __DIR__ . '/Huawei.php';
+require_once __DIR__ . '/SnmpClient.php';
+require_once __DIR__ . '/SnmpRates.php';
 require_once __DIR__ . '/Schema.php';
 require_once __DIR__ . '/../config/database.php';
 
@@ -100,7 +102,9 @@ class OltManager
     /** An OLT row without its password, with boards and profiles decoded. */
     public static function publicOlt(array $o): array
     {
-        unset($o['password_enc'], $o['vpn_pass_enc']);
+        unset($o['password_enc'], $o['vpn_pass_enc'], $o['snmp_community_enc']);
+        $o['snmp'] = json_decode((string)($o['snmp_json'] ?? ''), true) ?: [];
+        unset($o['snmp_json']);
         $o['boards'] = json_decode((string)$o['boards_json'], true) ?: [];
         $o['profiles'] = json_decode((string)$o['profiles_json'], true) ?: ['line' => [], 'srv' => [], 'vlans' => []];
         $o['traffic'] = json_decode((string)($o['traffic_json'] ?? ''), true) ?: [];
@@ -268,6 +272,13 @@ class OltManager
         $olt = !empty($in['id']) ? $this->olt((int)$in['id']) : null;
         if (!empty($in['id']) && !$olt) throw new InvalidArgumentException('OLT not found.');
         if (!$olt && $pass === '') throw new InvalidArgumentException('Enter the OLT password.');
+        $snmpEnabled = array_key_exists('snmp_enabled', $in) ? !empty($in['snmp_enabled']) : !empty($olt['snmp_enabled']);
+        $snmpPort = (int)($in['snmp_port'] ?? $olt['snmp_port'] ?? 161);
+        $community = (string)($in['snmp_community'] ?? '');
+        if ($snmpPort < 1 || $snmpPort > 65535) throw new InvalidArgumentException('The SNMP UDP port must be between 1 and 65535.');
+        if (strlen($community) > 255 || preg_match('/[\x00-\x1f\x7f]/', $community)) throw new InvalidArgumentException('The SNMP community must be at most 255 bytes without control characters.');
+        $snmpEnc = $community !== '' ? $this->encrypt($community) : ($olt['snmp_community_enc'] ?? null);
+        if ($snmpEnabled && !$snmpEnc) throw new InvalidArgumentException('Enter the read-only SNMP community configured on the OLT.');
         $enc = $pass !== '' ? $this->encrypt($pass) : $olt['password_enc'];
 
         if ($olt) {
@@ -292,6 +303,12 @@ class OltManager
             $this->db->prepare("UPDATE olts SET conn_type='direct', host=?, telnet_port=?, vpn_user='', vpn_pass_enc=NULL, vpn_ip='', lan_ip='' WHERE id=?")
                 ->execute([$host, $port, $id]);
         }
+        $this->db->prepare('UPDATE olts SET snmp_enabled=?, snmp_port=?, snmp_community_enc=? WHERE id=?')
+            ->execute([(int)$snmpEnabled, $snmpPort, $snmpEnc, $id]);
+        if (!$snmpEnabled || !$olt || $snmpEnabled !== (bool)$olt['snmp_enabled'] || $community !== '' || $snmpPort !== (int)$olt['snmp_port'] || $host !== $olt['host'] || $lanIp !== $olt['lan_ip']) {
+            $this->db->prepare('UPDATE olts SET snmp_status=?, snmp_error=\'\', snmp_checked_at=NULL, snmp_json=NULL WHERE id=?')
+                ->execute([$snmpEnabled ? 'pending' : 'disabled', $id]);
+        }
         return $id;
     }
 
@@ -300,7 +317,8 @@ class OltManager
         $olt = $this->olt($id);
         if (!$olt) throw new InvalidArgumentException('OLT not found.');
         if ($olt['conn_type'] === 'vpn') {
-            try { $this->vpnRemove($olt); } catch (Throwable $e) { /* the login goes with the OLT either way */ }
+            // Retain the row if revocation fails, so the operator can retry with its credentials intact.
+            $this->vpnRemove($olt);
         }
         $this->db->prepare('DELETE FROM olts WHERE id=?')->execute([$id]);
         // Nothing left to watch on it, so its alarms end here.
@@ -329,7 +347,10 @@ class OltManager
 
     public function vpnUsername(int $oltId): string
     {
-        return strtolower($this->config->getSubdomain()) . '-olt' . $oltId;
+        $sub = strtolower($this->config->getSubdomain());
+        $name = $sub . '-olt' . $oltId;
+        // RouterOS OVPN usernames are limited to 27 characters. Keep ordinary names readable.
+        return strlen($name) <= 27 ? $name : 's' . substr(hash('sha256', $sub), 0, 12) . '-o' . $oltId;
     }
 
     /** Make sure this OLT has its VPN login and fixed tunnel IP; keeps an existing password. */
@@ -337,7 +358,7 @@ class OltManager
     {
         $olt = $this->olt($id);
         $pass = $olt['vpn_pass_enc'] ? $this->decrypt($olt['vpn_pass_enc']) : bin2hex(random_bytes(10));
-        $user = $this->vpnUsername($id);
+        $user = $olt['vpn_user'] ?: $this->vpnUsername($id);
         $ip = $this->vpnHelper(['add', $user, hash('sha256', $pass)]);
         if (!filter_var($ip, FILTER_VALIDATE_IP)) throw new RuntimeException('The SmartOLT VPN gave no tunnel IP.');
         $this->db->prepare('UPDATE olts SET vpn_user=?, vpn_pass_enc=?, vpn_ip=?, host=?, telnet_port=? WHERE id=?')
@@ -375,30 +396,8 @@ class OltManager
     public function mikrotikScript(array $olt): string
     {
         if ($olt['conn_type'] !== 'vpn' || !$olt['vpn_pass_enc']) return '';
-        $if = 'smartolt-olt' . (int)$olt['id'];
-        $pass = $this->decrypt($olt['vpn_pass_enc']);
-        $common = 'name=' . $if . ' connect-to=' . $this->vpnServer() . ' port=1194 user=' . $olt['vpn_user'] . ' password=' . $pass
-            . ' auth=sha1 add-default-route=no comment="SmartOLT ' . $this->scriptSafe($olt['name']) . '"';
-        $lan = $olt['lan_ip'];
-        $lp = (int)$olt['lan_port'];
-        $tag = 'comment="' . $if . '"';
-        return implode("\n", [
-            '{',
-            ':local v [:pick [/system resource get version] 0 1]',
-            '/interface ovpn-client remove [find name="' . $if . '"]',
-            ':if ($v = "7") do={ /interface ovpn-client add ' . $common . ' cipher=aes256-cbc route-nopull=yes } else={ /interface ovpn-client add ' . $common . ' cipher=aes256 }',
-            '/ip firewall nat remove [find ' . $tag . ']',
-            '/ip firewall nat add chain=dstnat in-interface=' . $if . ' protocol=tcp dst-port=' . self::VPN_NAT_PORT . ' action=dst-nat to-addresses=' . $lan . ' to-ports=' . $lp . ' ' . $tag,
-            '/ip firewall nat add chain=srcnat dst-address=' . $lan . ' protocol=tcp dst-port=' . $lp . ' action=masquerade ' . $tag,
-            '/ip firewall filter remove [find ' . $tag . ']',
-            ':if ([:len [/ip firewall filter find]] > 0) do={ /ip firewall filter add chain=forward in-interface=' . $if . ' dst-address=' . $lan . ' protocol=tcp dst-port=' . $lp . ' action=accept ' . $tag . ' place-before=0 } else={ /ip firewall filter add chain=forward in-interface=' . $if . ' dst-address=' . $lan . ' protocol=tcp dst-port=' . $lp . ' action=accept ' . $tag . ' }',
-            '}',
-        ]);
-    }
-
-    private function scriptSafe(string $s): string
-    {
-        return preg_replace('/[^A-Za-z0-9 _.-]/', '', $s);
+        require_once __DIR__ . '/Mikrotik.php';
+        return Mikrotik::script($olt, $this->vpnServer(), $this->decrypt($olt['vpn_pass_enc']));
     }
 
     // ----- Talking to the OLT -----
@@ -409,7 +408,7 @@ class OltManager
      */
     public function withOlt(array $olt, callable $fn, int $wait = 30)
     {
-        $name = $this->db->quote('smartolt_' . $this->config->getSubdomain() . '_' . (int)$olt['id']);
+        $name = $this->db->quote('smartolt_' . substr(hash('sha256', $this->config->getSubdomain()), 0, 32) . '_' . (int)$olt['id']);
         if ((int)$this->db->query("SELECT GET_LOCK({$name}, " . (int)$wait . ')')->fetchColumn() !== 1) {
             throw new OltError('The OLT is busy with another task. Try again in a moment.');
         }
@@ -450,12 +449,82 @@ class OltManager
         $this->lastTranscript = null;
     }
 
+    /** Read SNMP independently of Telnet. Keep the last successful sample clearly dated on failure. */
+    public function pollSnmp(array $olt): array
+    {
+        if (empty($olt['snmp_enabled'])) return ['status' => 'disabled', 'error' => 'Enable SNMP in the OLT settings first.'];
+        $lock = $this->db->quote('smartolt_snmp_' . substr(hash('sha256', $this->config->getSubdomain()), 0, 32) . '_' . (int)$olt['id']);
+        if (!(int)$this->db->query("SELECT GET_LOCK({$lock}, 0)")->fetchColumn()) return ['status' => 'busy', 'error' => 'SNMP is already being read.'];
+        try {
+            $olt = $this->olt((int)$olt['id']);
+            if (!$olt || empty($olt['snmp_enabled'])) return ['status' => 'disabled'];
+            $old = json_decode((string)$olt['snmp_json'], true) ?: [];
+            try {
+                if ($olt['conn_type'] === 'vpn' && !$this->vpnStatus($olt)['connected']) throw new SnmpError('The MikroTik VPN is not connected.');
+                $client = new SnmpClient($olt['host'], $olt['conn_type'] === 'vpn' ? 2161 : (int)$olt['snmp_port'], $this->decrypt($olt['snmp_community_enc']));
+                $sample = ['system' => $client->systemInfo(), 'interfaces' => []];
+                try { $sample['interfaces'] = $client->interfaces(); }
+                catch (SnmpError $e) { $sample['interface_error'] = $e->getMessage(); }
+                $sample['sampled_at'] = self::now();
+                $sample['timestamp'] = microtime(true);
+                $elapsed = $sample['timestamp'] - (float)($old['timestamp'] ?? 0);
+                $restarted = !isset($old['system']['uptime_ticks']) || $sample['system']['uptime_ticks'] < $old['system']['uptime_ticks'];
+                $prior = array_column($old['interfaces'] ?? [], null, 'index');
+                $insert = $this->db->prepare('INSERT INTO snmp_samples (olt_id, if_index, at, rx_bps, tx_bps) VALUES (?,?,?,?,?)');
+                foreach ($sample['interfaces'] as &$iface) {
+                    $iface += SnmpRates::calculate($iface, $prior[$iface['index']] ?? [], $elapsed, $restarted);
+                    $insert->execute([$olt['id'], $iface['index'], $sample['sampled_at'], $iface['rx_bps'], $iface['tx_bps']]);
+                }
+                unset($iface);
+                $status = isset($sample['interface_error']) ? 'partial' : 'online';
+                $error = $sample['interface_error'] ?? '';
+                $json = json_encode($sample, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+                $this->db->prepare('UPDATE olts SET snmp_status=?, snmp_error=?, snmp_checked_at=?, snmp_json=? WHERE id=?')
+                    ->execute([$status, mb_substr($error, 0, 500), self::now(), $json, $olt['id']]);
+                return ['status' => $status, 'error' => $error] + $sample;
+            } catch (Throwable $e) {
+                $error = mb_substr($e->getMessage(), 0, 500);
+                $this->db->prepare("UPDATE olts SET snmp_status='error', snmp_error=?, snmp_checked_at=? WHERE id=?")
+                    ->execute([$error, self::now(), $olt['id']]);
+                return ['status' => 'error', 'error' => $error];
+            }
+        } finally {
+            $this->db->query("SELECT RELEASE_LOCK({$lock})");
+        }
+    }
+
+    public function snmpHistory(int $oltId, int $hours = 24): array
+    {
+        $st = $this->db->prepare('SELECT if_index, at, rx_bps, tx_bps FROM snmp_samples WHERE olt_id=? AND at>=? ORDER BY at, id');
+        $st->execute([$oltId, date('Y-m-d H:i:s', time() - max(1, min(720, $hours)) * 3600)]);
+        return $st->fetchAll();
+    }
+
+    /** Configuration can contain credentials; never retain it in the activity transcript. */
+    public function readConfigBackup(int $id): string
+    {
+        $olt = $this->olt($id);
+        if (!$olt) throw new InvalidArgumentException('OLT not found.');
+        try {
+            $output = $this->withOlt($olt, function (Huawei $s) {
+                return $s->displayCommand('display current-configuration');
+            });
+            if (($error = Huawei::findError($output)) !== null) throw new OltError($error);
+            if (trim($output) === '' || strlen($output) < 40) throw new OltError('The OLT returned an empty or incomplete configuration.');
+            return $output;
+        } finally {
+            $this->lastTranscript = null;
+        }
+    }
+
     /**
      * Read boards, profiles, speed tables, every ONT with its state, down cause and light levels, and
      * the ONUs waiting for authorization; store it all with history. Returns a summary.
      */
     public function refresh(array $olt, bool $withSignal = true): array
     {
+        // SNMP has its own health: a failed CLI login must not hide a working monitoring path.
+        if (!empty($olt['snmp_enabled'])) $this->pollSnmp($olt);
         $known = [];
         $st = $this->db->prepare('SELECT id, frame, slot, port, ont_id, run_state, status_group, last_down_cause, history_at FROM onus WHERE olt_id=?');
         $st->execute([$olt['id']]);
@@ -630,6 +699,7 @@ class OltManager
     /** History older than this is not kept: signal and network points 30 days, status changes 180 days. */
     public function prune(): void
     {
+        $this->db->exec('DELETE FROM snmp_samples WHERE at < NOW() - INTERVAL 30 DAY');
         $this->db->exec('DELETE FROM signal_history WHERE at < NOW() - INTERVAL 30 DAY');
         $this->db->exec('DELETE FROM olt_stats WHERE at < NOW() - INTERVAL 30 DAY');
         $this->db->exec('DELETE FROM pon_stats WHERE at < NOW() - INTERVAL 30 DAY');
@@ -1784,7 +1854,11 @@ class OltManager
         $args = [];
         foreach (['from' => '>=', 'to' => '<'] as $k => $op) {
             $d = (string)($f[$k] ?? '');
-            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+            $exact = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $d);
+            if ($exact && $exact->format('Y-m-d H:i:s') === $d) {
+                $where[] = $col . ($k === 'to' ? ' <= ?' : ' >= ?');
+                $args[] = $d;
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && ($date = DateTimeImmutable::createFromFormat('!Y-m-d', $d)) && $date->format('Y-m-d') === $d) {
                 $where[] = "{$col} {$op} ?";
                 $args[] = $k === 'to' ? date('Y-m-d', strtotime($d . ' +1 day')) : $d;
             }

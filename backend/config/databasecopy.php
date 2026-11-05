@@ -1,5 +1,7 @@
 <?php
 // Example only. install.sh writes the real backend/config/database.php (git ignored) for each ISP.
+// Public demo auto-login is OFF. Only an intentionally public demo may define
+// SMARTOLT_DEMO_MODE as true; its app_url must have the exact demo.* hostname.
 class Database {
     private $host = "localhost";
     private $db_name = "demo";

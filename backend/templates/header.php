@@ -27,7 +27,7 @@ $navMenu = [
     ['Settings', [
         'Zones' => 'catalog.php?k=zones', 'Sectors' => 'catalog.php?k=sectors', 'Splitters' => 'catalog.php?k=odbs',
         'ONU types' => 'catalog.php?k=types', 'Speed profiles' => 'catalog.php?k=speeds', 'OLTs' => 'olts.php',
-        'VPN & TR069' => 'vpn.php', 'Presets' => 'catalog.php?k=presets', 'General' => 'settings.php', 'Billing' => 'billing.php',
+        'VPN & TR069' => 'vpn.php', 'Presets' => 'catalog.php?k=presets', 'Configuration backups' => 'backups.php', 'General' => 'settings.php', 'Billing' => 'billing.php',
     ]],
 ];
 $navOlts = $mgr->olts();
@@ -49,10 +49,10 @@ $navOlts = $mgr->olts();
         };
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link rel="stylesheet" href="assets/app.css?v=5">
+    <link rel="stylesheet" href="assets/app.css?v=6">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
-<body>
+<body<?php echo !empty($bodyClass) ? ' class="' . htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') . '"' : ''; ?>>
 <nav class="so-nav" id="soNav">
     <div class="so-wrap">
         <a class="so-brand" href="index.php">SMARTOLT</a>

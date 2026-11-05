@@ -111,8 +111,14 @@ class LoginHandler {
     }
 
     public function isDemoHost() {
-        $host = $_SERVER['HTTP_HOST'] ?? '';
-        return strpos($host, 'demo.') === 0;
+        // Host is supplied by the client and must never grant an administrator session.
+        // A deliberately public demo must opt in in its private site configuration.
+        if (!defined('SMARTOLT_DEMO_MODE') || SMARTOLT_DEMO_MODE !== true) {
+            return false;
+        }
+        $configured = strtolower((string)parse_url((new Database())->getAppUrl(), PHP_URL_HOST));
+        $requested = strtolower((string)parse_url('http://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST));
+        return $configured !== '' && str_starts_with($configured, 'demo.') && $requested === $configured;
     }
 
     private function autoLoginDemo() {

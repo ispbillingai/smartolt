@@ -54,6 +54,7 @@ function status_label(string $group): string
 }
 
 const ACTION_LABELS = [
+    'olt.backup' => 'Back up OLT configuration', 'olt.backup_download' => 'Download OLT backup', 'olt.backup_delete' => 'Delete OLT backup',
     'onu.authorize' => 'Authorize ONU', 'onu.reboot' => 'Reboot ONU', 'onu.delete' => 'Delete ONU', 'onu.describe' => 'Rename ONU',
     'onu.status' => 'Read ONU', 'onu.autofind' => 'Search for ONUs', 'onu.config' => 'Show running config',
     'onu.service' => 'Change VLAN or speed', 'onu.enable' => 'Enable ONU', 'onu.disable' => 'Disable ONU', 'onu.replace_sn' => 'Replace ONU',

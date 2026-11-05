@@ -314,6 +314,8 @@ while (true) {
             readline_from($c);
             $state['saved'] = ($state['saved'] ?? 0) + 1;
             $out = "\n  It will take several minutes to save configuration file, please wait...\n  The data of save is completed\n";
+        } elseif ($cmd === 'display current-configuration' && $mode === 'config') {
+            $out = "[MA5683T]\n#\n[global-config]\n sysname MA5683T\n snmp-agent community read fixture-backup-secret\n#\n[vlan]\n vlan 100 smart\n vlan 200 smart\n#\nreturn\n";
         } elseif (preg_match('/^display current-configuration ont 0\/(\d+)\/(\d+) (\d+)$/', $cmd, $m) && $mode === 'config') {
             $k = "{$m[1]}/{$m[2]}/{$m[3]}";
             if (!isset($state['onts'][$k])) $out = "  Failure: The ONT does not exist\n";

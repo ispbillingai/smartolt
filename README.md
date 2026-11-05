@@ -37,6 +37,51 @@ calls this site's `api.php`; everything that touches an OLT lives here.
 Supported now: Huawei MA5683T, MA5608T, MA5680T over Telnet. Another vendor is another driver in
 `backend/lib/` with the same public methods as `Huawei.php`.
 
+The dashboard is an operations overview with measured ONU availability, polling freshness,
+attention items, fleet connectivity, SNMP/VPN health and quick actions. Missing or stale readings
+are labelled; availability is a current snapshot, not an SLA measurement.
+
+## SNMP and traffic
+
+Enable **read-only SNMPv2c** in an OLT's settings and enter its community and UDP port. The
+community is encrypted at rest and omitted from public API rows. No PHP SNMP extension is needed.
+The Uplink tab can test SNMP independently of Telnet and shows system identity/uptime, IF-MIB
+Ethernet interfaces and traffic history. Cron polls enabled OLTs every five minutes. Traffic needs
+two successful samples; resets, missing counters and ambiguous 32-bit wraps produce gaps. History
+is kept for 30 days. SNMP failure does not overwrite Telnet connection health.
+
+For direct OLTs, allow the monitoring server to reach the configured UDP port. For VPN OLTs,
+re-paste the generated MikroTik commands after enabling/changing SNMP: UDP 2161 on the tunnel is
+forwarded to the OLT's configured SNMP port. Telnet uses TCP 2323 on the tunnel. ONU optical levels
+and provisioning still use the Huawei Telnet driver; SNMP write operations and traps are not implemented.
+
+## VPN installation and upgrade
+
+On the Linux VPN server run `sudo bash vpn/setup_openvpn.sh` from this updated checkout. It installs
+the helper and status parser, preserves existing credentials/addresses, and restarts OpenVPN.
+Fresh installations use private `10.253.0.0/16`; existing installations retain their network.
+Then copy the updated commands from each OLT page to its MikroTik. Scripts explicitly enable the
+OVPN client, restrict forwarding to the OLT services and return traffic through the corresponding
+tunnel. Status checks require a running service and a fresh OpenVPN status file.
+
+RouterOS 6/7 commands and server helpers are fixture-tested, not verified on physical RouterOS.
+The legacy TLS setup does not authenticate the VPN server certificate on the router; trusted-CA
+distribution and server-name verification remain deployment work before calling this hardened.
+
+## Configuration backups
+
+Use **Configuration backups** under Settings to capture, list, download or delete manual snapshots.
+Configuration content is encrypted in the database and excluded from activity transcripts. Downloads
+require an authenticated session and CSRF token. Back up the site's encryption key separately;
+without it, saved passwords and configuration snapshots cannot be recovered. Restore and scheduled
+backup execution are not implemented.
+
+## Verification and remaining scope
+
+See [TESTING.md](TESTING.md) for repeatable simulation tests and the feature comparison with the
+supplied recording. Passing these tests does not establish firmware compatibility or full SmartOLT
+feature parity. Schema upgrades apply automatically on the next application request.
+
 ## API auth
 
 `Authorization: Bearer <token>` where `token = hash_hmac('sha256', <subdomain>, <fleet secret>)`.

@@ -15,10 +15,10 @@ include __DIR__ . '/backend/templates/header.php';
             <dt>Port</dt><dd>1194 TCP</dd>
             <dt>Type</dt><dd>OpenVPN client (MikroTik RouterOS 6 and 7)</dd>
             <dt>Cipher</dt><dd>AES 256 CBC, SHA1</dd>
-            <dt>Tunnel network</dt><dd class="so-mono">17.0.0.0/16</dd>
+            <dt>Tunnel network</dt><dd>Private 10.253.0.0/16 on new installations; existing installations keep their assigned network. Each OLT's address is shown below.</dd>
             <dt>Login</dt><dd>One per OLT, made for you, with its own password</dd>
         </dl>
-        <p class="so-muted" style="font-size:14px;margin-bottom:0">The router only forwards the OLT's Telnet port to SmartOLT. Nothing else on your network is reachable through the tunnel, and the tunnel cannot reach this server's other services.</p>
+        <p class="so-muted" style="font-size:14px;margin-bottom:0">The router forwards the OLT's Telnet port and, when enabled, its SNMP port to SmartOLT. Paste the updated router commands after enabling SNMP or changing an OLT port. VPN connection status confirms the router tunnel; refresh the OLT to test the OLT login and SNMP separately.</p>
     <?php echo panel_close(); ?></div>
     <div><?php echo panel_open('TR069', '', 'cloud'); ?>
         <div class="so-empty">Not connected yet</div>
@@ -32,7 +32,7 @@ include __DIR__ . '/backend/templates/header.php';
         <tbody><?php foreach ($vpnOlts as $o): $s = $mgr->vpnStatus($o); ?>
             <tr><td><?php echo (int)$o['id'] . ' - ' . e($o['name']); ?></td><td class="so-mono"><?php echo e($o['vpn_user']); ?></td><td class="so-mono"><?php echo e($o['vpn_ip']); ?></td>
                 <td class="so-mono"><?php echo e($o['lan_ip'] . ':' . $o['lan_port']); ?></td>
-                <td><?php echo $s['connected'] ? badge('Connected', 'green') . ' <small>' . e($s['from']) . '</small>' : badge('Not connected', 'orange'); ?></td>
+                <td><?php echo $s['connected'] ? badge('Connected', 'green') . ' <small>' . e($s['from']) . '</small>' : badge(isset($s['error']) ? 'Status unavailable' : 'Not connected', 'orange'); ?><?php if (!empty($s['error'])): ?><br><small><?php echo e($s['error']); ?></small><?php endif; ?></td>
                 <td class="num"><?php echo btn('Router commands', 'blue', 'olt.php?id=' . (int)$o['id']); ?></td></tr>
         <?php endforeach; ?></tbody>
     </table></div>

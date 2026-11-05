@@ -5,6 +5,7 @@
 
 B="${1:-http://127.0.0.1:8099}"
 OLT_PORT="${2:-47023}"
+SNMP_PORT="${3:-47161}"
 J="$(mktemp)"
 F="$(mktemp)"
 # curl on Windows needs a Windows path for -F file uploads.
@@ -24,16 +25,20 @@ T() { csrf "$(get "$1")"; }
 # ----- Sign in -----
 P=$(get index.php)
 check "signed out shows the sign in page" "$(has "$P" 'Manage your OLTs and every ONU on them')"
+P=$(curl -s -H 'Host: demo.attacker.invalid' "$B/index.php")
+check "a forged demo host cannot bypass sign in" "$(both "$(has "$P" 'Manage your OLTs and every ONU on them')" "$(hasnt "$P" 'Waiting authorization')")"
 P=$(post index.php -d username=admin -d password=wrong)
 check "wrong password is refused" "$(has "$P" 'Invalid username or password')"
 P=$(post index.php -d username=admin -d password=admin)
 check "first sign in asks for a new password" "$(has "$P" 'new_password')"
 P=$(get olts.php)
 check "pages stay closed until the password is changed" "$(has "$P" 'new_password')"
-P=$(post index.php -d new_password=short -d confirm_password=short)
+P=$(post index.php -d csrf=bad -d new_password=Changed-Without-Token -d confirm_password=Changed-Without-Token)
+check "first password change requires the session token" "$(has "$P" 'Your session expired')"
+P=$(post index.php -d csrf=$(csrf "$P") -d new_password=short -d confirm_password=short)
 check "short password refused" "$(has "$P" 'at least 8 characters')"
-P=$(post index.php -d new_password=Fibre-Test-2026 -d confirm_password=Fibre-Test-2026)
-check "password changed, dashboard shows" "$(both "$(has "$P" 'Add your OLT to get started')" "$(has "$P" 'Waiting authorization')")"
+P=$(post index.php -d csrf=$(csrf "$P") -d new_password=Fibre-Test-2026 -d confirm_password=Fibre-Test-2026)
+check "password changed, dashboard shows" "$(both "$(has "$P" 'Connect your first OLT')" "$(has "$P" 'Waiting authorization')")"
 check "top menu has every section" "$(both "$(has "$P" 'Find config mismatches (DB vs OLT)')" "$(has "$P" 'VPN &amp; TR069')")"
 check "dashboard has no PHP errors" "$(noerr "$P")"
 
@@ -50,9 +55,9 @@ P=$(post olts.php -d csrf=$(csrf "$P") -d do=refresh -d id=1)
 check "refresh" "$(has "$P" 'Main OLT read: 4 ONUs, 2 online')"
 
 P=$(get index.php)
-check "dashboard card: 2 waiting, both new" "$(both "$(has "$P" '<b>2</b><span>Waiting authorization')" "$(has "$P" 'New: 2')")"
-check "dashboard card: offline split by cause" "$(has "$P" 'PwrFail: 1 &nbsp;LoS: 1')"
-check "dashboard OLT panel shows uptime and temperature" "$(has "$P" '3d 04:33, 45°C')"
+check "dashboard card: 2 waiting, both new" "$(has "$P" 'data-testid="metric-waiting" data-count="2" data-new="2"')"
+check "dashboard card: offline split by cause" "$(both "$(has "$P" 'Power fail: 1')" "$(has "$P" 'Signal loss: 1')")"
+check "dashboard OLT panel shows uptime and temperature" "$(both "$(has "$P" '3d 04:33')" "$(has "$P" '45°C')")"
 check "dashboard PON outage rows" "$(both "$(has "$P" 'Full PON LOS')" "$(has "$P" 'Offline N/A')")"
 check "dashboard has no PHP errors" "$(noerr "$P")"
 P=$(get "olt.php?id=1&tab=pon")
@@ -61,6 +66,19 @@ check "OLT page lists PON ports and boards" "$(both "$(has "$P" '0/1/1')" "$(has
 P=$(get "olt.php?id=1")
 check "OLT details tab" "$(both "$(has "$P" 'OLT hardware version')" "$(has "$P" '3d 04:33')")"
 check "OLT page has no PHP errors" "$(noerr "$P")"
+
+P=$(post olts.php -d csrf=$(T olts.php) -d do=save -d id=1 -d conn_type=direct -d "name=Main OLT" -d host=127.0.0.1 -d telnet_port=$OLT_PORT -d username=root -d snmp_enabled=1 -d snmp_port=$SNMP_PORT -d snmp_community=test-read)
+P=$(post "olt.php?id=1&tab=uplink" -d csrf=$(T "olt.php?id=1&tab=uplink") -d do=snmp -d id=1 -d tab=uplink)
+check "SNMP tab renders observed interfaces and traffic history" "$(both "$(has "$P" 'OLT-test')" "$(noerr "$P")")"
+
+# Configuration backups are actual device reads, downloaded without page HTML.
+P=$(post backups.php -d csrf=$(T backups.php) -d do=capture -d olt_id=1)
+check "create an OLT configuration backup" "$(both "$(has "$P" 'Configuration backup created')" "$(has "$P" 'bytes')")"
+BID=$(grep -o 'name="id" value="[0-9]*"' <<< "$P" | head -1 | grep -o '[0-9]*')
+C=$(post backups.php -d csrf=$(csrf "$P") -d do=download -d id=$BID)
+check "backup downloads the configuration without HTML" "$(both "$(has "$C" 'sysname MA5683T')" "$(hasnt "$C" '<!DOCTYPE\|<html')")"
+P=$(post backups.php -d csrf=$(T backups.php) -d do=delete -d id=$BID)
+check "delete a configuration backup" "$(both "$(has "$P" 'Configuration backup removed')" "$(has "$P" 'No configuration backups yet')")"
 
 # ----- Settings lists -----
 P=$(post "catalog.php?k=zones" -d csrf=$(T "catalog.php?k=zones") -d do=save -d name=Kasarani)
@@ -167,6 +185,8 @@ C=$(get "reports.php?r=export&download=1")
 check "export CSV" "$(both "$(has "$C" 'Serial number')" "$(has "$C" 'erin_flat')")"
 C=$(get "reports.php?r=export&download=1&status=los")
 check "export keeps the filters" "$(both "$(has "$C" 'erin_flat')" "$(hasnt "$C" 'alice_home')")"
+P=$(get "reports.php?r=export&status=los&q=erin&speed=1")
+check "export form retains configured-list filters" "$(both "$(has "$P" 'name="status" value="los"')" "$(both "$(has "$P" 'name="q" value="erin"')" "$(has "$P" 'name="speed" value="1"')")")"
 printf 'Serial number,Zone,Splitter,Splitter port,Address\n485754434D2F0001,Kasarani,ODB-K1,4,Plot 9\n485754434D2F0002,Nowhere,,,\n' > "$F"
 P=$(post reports.php -F csrf=$(T "reports.php?r=import") -F do=import -F "file=@$F;type=text/csv")
 check "import updates ONUs by serial" "$(both "$(has "$P" 'Updated 1 ONU')" "$(has "$P" 'no zone called Nowhere')")"
@@ -178,6 +198,10 @@ P=$(get "reports.php?r=auth")
 check "authorizations report" "$(both "$(has "$P" '485754434D2F5A9A')" "$(has "$P" 'admin')")"
 P=$(get "reports.php?r=status&state=disabled")
 check "status changes report" "$(both "$(has "$P" 'Dave_Home')" "$(hasnt "$P" 'bob_shop')")"
+for report in auth status splitters; do
+    C=$(get "reports.php?r=$report&csv=1")
+    check "$report export contains CSV without page HTML" "$(both "$(hasnt "$C" '<!DOCTYPE\|<html\|<script')" "$(noerr "$C")")"
+done
 P=$(get "reports.php?r=pon")
 check "PON occupancy report" "$(both "$(has "$P" '0/1/0')" "$(has "$P" '/ 128')")"
 for r in traffic wifi mismatch; do P=$(get "reports.php?r=$r"); check "report $r has no PHP errors" "$(noerr "$P")"; done
@@ -187,7 +211,7 @@ P=$(post olts.php -d csrf=$(T olts.php) -d do=refresh -d id=1)
 P=$(get "reports.php?r=mismatch")
 check "mismatch report finds the old speed on the OLT" "$(has "$P" 'Speed on the OLT is 10 Mbps down')"
 P=$(get index.php)
-check "dashboard counts them under Resync" "$(has "$P" 'Resync: [1-9]')"
+check "dashboard counts them under Resync" "$(has "$P" 'data-resync="[1-9]')"
 P=$(post reports.php -d csrf=$(T "reports.php?r=mismatch") -d do=resync -d id=1)
 check "resync from the report" "$(has "$P" 'were put on the OLT')"
 
@@ -206,7 +230,7 @@ check "delete goes back to the list" "$(has "$P" 'ONU deleted from the OLT')"
 P=$(get "unconfigured.php?refresh=1")
 check "deleted ONU waits again, marked as authorized before" "$(both "$(has "$P" '48575443AAAA0001')" "$(has "$P" 'Authorized before')")"
 P=$(get index.php)
-check "dashboard D counts it" "$(has "$P" 'D: 1')"
+check "dashboard counts moved ONUs" "$(has "$P" 'data-moved="1"')"
 P=$(post auto_actions.php -d csrf=$(T auto_actions.php) -d do=save -d olt_id=1 -d pon=0/9/9 -d preset_id=1 -d enabled=1)
 P=$(get "unconfigured.php?refresh=1")
 check "an auto action for another port does nothing" "$(hasnt "$P" 'Auto actions authorized')"
