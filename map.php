@@ -25,8 +25,8 @@ foreach ($mgr->odbs() as $d) {
 $pageTitle = $layer === 'odb' ? 'Splitters map' : 'ONUs map';
 include __DIR__ . '/backend/templates/header.php';
 ?>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
+<script src="assets/vendor/leaflet/leaflet.js"></script>
 <?php echo page_title($pageTitle, $layer === 'odb'
     ? count($boxes) . ' of ' . $odbCount . ' splitters have a location. Set it under Settings, Splitters.'
     : count($points) . ' of ' . count($all) . ' ONUs have a location. Set it on the ONU page, or with Use GPS when you authorize.'); ?>

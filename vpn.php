@@ -11,7 +11,8 @@ include __DIR__ . '/backend/templates/header.php';
 <div class="so-half">
     <div><?php echo panel_open('SmartOLT VPN server', '', 'lock'); ?>
         <dl class="so-dl">
-            <dt>Server</dt><dd class="so-mono"><?php echo e($mgr->vpnServer()); ?></dd>
+            <dt>Server</dt><dd class="so-mono"><?php echo e($mgr->vpnServer() ?: 'Not configured. Run the VPN server setup with its DNS hostname.'); ?></dd>
+            <dt>Server identity</dt><dd>Verified against the installed SmartOLT CA and VPN hostname. Router commands import the public CA automatically.</dd>
             <dt>Port</dt><dd>1194 TCP</dd>
             <dt>Type</dt><dd>OpenVPN client (MikroTik RouterOS 6 and 7)</dd>
             <dt>Cipher</dt><dd>AES 256 CBC, SHA1</dd>

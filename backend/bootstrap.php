@@ -4,13 +4,14 @@
 $session_lifetime = 30 * 24 * 60 * 60; // 30 days, same as the login page
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
-        'lifetime' => $session_lifetime,
+        'lifetime' => 0,
         'path' => '/',
         'domain' => '',
         'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
         'httponly' => true,
         'samesite' => 'Strict'
     ]);
+    ini_set('session.gc_maxlifetime', (string)$session_lifetime);
     session_start();
 }
 
@@ -31,6 +32,10 @@ if (empty($_SESSION['csrf'])) {
 $mgr = new OltManager();
 $mgr->user = (string)($_SESSION['username'] ?? '');
 $mgr->ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+$preferences = $mgr->db()->prepare('SELECT timezone, display_name, company_name FROM users WHERE id=?');
+$preferences->execute([$_SESSION['user_id']]);
+$preferences = $preferences->fetch() ?: [];
+AppTime::setDisplayZone(in_array($preferences['timezone'] ?? '', DateTimeZone::listIdentifiers(), true) ? $preferences['timezone'] : AppTime::STORAGE_ZONE);
 
 /** Stop a POST that did not come from our own form. */
 function require_csrf(): void

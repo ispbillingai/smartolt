@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/backend/bootstrap.php';
+require_once __DIR__ . '/backend/lib/AcsIntegration.php';
 
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $runningConfig = null;
@@ -27,8 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         switch ($_POST['do'] ?? '') {
             case 'rename':
-                $desc = $mgr->describe($id, (string)($_POST['description'] ?? ''), (string)($_POST['customer_ref'] ?? ''));
-                $mgr->saveMeta($id, $_POST);
+                $desc = $mgr->describe($id, (string)($_POST['description'] ?? ''), (string)($_POST['customer_ref'] ?? ''), $_POST);
                 back($here, 'success', "Saved as {$desc}.");
             case 'details':
                 $mgr->saveMeta($id, $_POST);
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 back($here, 'success', 'Service changed on the OLT.');
             case 'resync':
                 $mgr->resync($id);
-                back($here, 'success', 'The saved VLAN, mode and speed were put on the OLT again.');
+                back($here, 'success', 'The saved VLAN, GEM port and speed were put on the OLT again.');
             case 'restore':
                 $mgr->restoreDefaults($id);
                 back($here, 'success', 'Factory defaults restored. The ONU restarts and gets its configuration from the OLT again.');
@@ -93,6 +93,12 @@ $f = ['id' => $id];
 $none = '<i>None</i>';
 $edit = function (string $href) { return ' <a href="' . e($href) . '" title="Open"><i class="fa fa-external-link"></i></a>'; };
 $router = $onu['mode'] === 'router';
+$acs = new AcsIntegration($mgr);
+$acsSettings = $acs->settings();
+$acsDevice = $acs->device($id);
+$ethReads = $mgr->db()->prepare('SELECT eth_port,MAX(at) read_at FROM onu_ethernet_samples WHERE onu_id=? GROUP BY eth_port');
+$ethReads->execute([$id]);
+$ethReads = array_column($ethReads->fetchAll(),'read_at','eth_port');
 
 $pageTitle = 'View ONU';
 include __DIR__ . '/backend/templates/header.php';
@@ -130,7 +136,7 @@ include __DIR__ . '/backend/templates/header.php';
             <?php if ($onu['lat'] !== null): ?> <a href="https://www.openstreetmap.org/?mlat=<?php echo e($onu['lat']); ?>&mlon=<?php echo e($onu['lng']); ?>#map=18/<?php echo e($onu['lat'] . '/' . $onu['lng']); ?>" target="_blank" rel="noopener" style="color:var(--red)"><i class="fa fa-map-marker"></i></a>
             <?php else: ?> <i class="fa fa-map-marker" style="color:var(--red)"></i><?php endif; ?></dd>
         <dt>Contact</dt><dd><?php echo $onu['contact'] !== '' ? e($onu['contact']) : $none; ?></dd>
-        <dt>Authorization date</dt><dd style="color:var(--text)"><?php echo $onu['authorized_at'] ? e(date('d-M-Y H:i:s', strtotime($onu['authorized_at']))) : 'Before SmartOLT'; ?> <a href="#" data-open="historyModal">History</a></dd>
+        <dt>Authorization date</dt><dd style="color:var(--text)"><?php echo $onu['authorized_at'] ? e(AppTime::format('d-M-Y H:i:s', $onu['authorized_at'])) : 'Before SmartOLT'; ?> <a href="#" data-open="historyModal">History</a></dd>
         <dt>ONU external ID</dt><dd><?php echo $onu['customer_ref'] !== '' ? e($onu['customer_ref']) : e($onu['sn']); ?></dd>
         <dt>VIP customer <i class="fa fa-info-circle" title="VIP ONUs stand out in lists and filters"></i></dt>
         <dd><form method="POST" style="display:inline"><?php echo csrf_field(); ?><input type="hidden" name="do" value="vip"><input type="hidden" name="id" value="<?php echo $id; ?>"><input type="hidden" name="vip" value="<?php echo $onu['vip'] ? '' : '1'; ?>">
@@ -150,10 +156,10 @@ include __DIR__ . '/backend/templates/header.php';
             <dt>Rx signal levels</dt><dd><div class="so-rx"><div>ONU Rx 1490nm<b id="rxOnu" class="sig-<?php echo strtolower(signal_level($onu['rx_power'])); ?>"><?php echo $onu['rx_power'] !== null ? number_format((float)$onu['rx_power'], 2) . ' dBm' : '-'; ?></b></div>
                 <div>OLT Rx 1310nm<b id="rxOlt"><?php echo $onu['olt_rx_power'] !== null ? number_format((float)$onu['olt_rx_power'], 2) . ' dBm' : '-'; ?></b></div></div></dd>
             <dt style="margin-top:8px">Distance</dt><dd style="margin-top:8px"><?php echo fmt_distance($onu['distance_m']); ?></dd>
-            <dt>TR069 Profile</dt><dd>Inactive</dd>
-            <dt>Mgmt IP</dt><dd>Inactive</dd>
+            <dt>TR069</dt><dd><a href="acs.php?onu_id=<?php echo $id; ?>"><?php echo !$acsSettings['enabled'] ? 'Set up ACS connection' : ($acsDevice ? 'View ACS readings' : 'Find this ONU in ACS'); ?></a><?php if ($acsDevice): ?><br><small class="so-muted">Read <?php echo e(when($acsDevice['checked_at'])); ?></small><?php endif; ?></dd>
+            <dt>Mgmt IP</dt><dd><?php echo e($acsDevice['snapshot']['ip'] ?? 'Not read from ACS'); ?></dd>
             <dt>Attached VLANs</dt><dd><?php echo $onu['vlan'] ? (int)$onu['vlan'] : '-'; ?></dd>
-            <dt>ONU mode</dt><dd><?php echo $onu['mode'] ? ($router ? 'Routing' : 'Bridging') . ($onu['vlan'] ? ' - WAN vlan: ' . (int)$onu['vlan'] : '') : '-'; ?></dd>
+            <dt>Service template</dt><dd><?php echo $onu['mode'] ? ($router ? 'Routing' : 'Bridging') . ($onu['vlan'] ? ' · VLAN ' . (int)$onu['vlan'] : '') : 'Not recorded'; ?> <small class="so-muted">(saved intent)</small></dd>
             <dt>WAN setup mode</dt><dd><?php echo $router ? 'Setup via ONU webpage' : 'Bridge to the router behind it'; ?></dd>
         </dl>
     </div>
@@ -165,7 +171,7 @@ include __DIR__ . '/backend/templates/header.php';
         <button type="button" class="so-btn so-btn-blue" id="getStatus">Get status</button>
         <?php echo post_btn('config', $f, 'Show running-config', 'blue', '', '', 'Reading the ONU configuration from the OLT...'); ?>
         <?php echo post_btn('sw_info', $f, 'SW info', 'blue', '', '', 'Reading the ONU version from the OLT...'); ?>
-        <button type="button" class="so-btn so-btn-grey" disabled title="TR069 is not connected to SmartOLT yet">TR-069</button>
+        <a class="so-btn so-btn-grey" href="acs.php?onu_id=<?php echo $id; ?>">TR-069</a>
         <button type="button" class="so-btn so-btn-green" id="live">LIVE!</button>
         <span class="so-muted" id="liveText" style="font-size:13px"></span>
     </div>
@@ -173,24 +179,24 @@ include __DIR__ . '/backend/templates/header.php';
 <div class="so-row" style="grid-template-columns:170px 1fr;align-items:start">
     <label>Traffic/Signal</label>
     <div class="so-half" style="gap:12px">
-        <div class="so-graph-empty"><i class="fa fa-picture-o"></i>Traffic graph data is not yet available for this device.</div>
+        <div class="so-graph-empty"><i class="fa fa-line-chart"></i>Read Ethernet counters and graph live traffic.<?php echo btn('Open traffic monitor','blue','traffic.php?id='.$id); ?></div>
         <div><?php if (count($history) < 2): ?><div class="so-graph-empty"><i class="fa fa-picture-o"></i>Signal graph fills in as the OLT is read every 5 minutes.</div>
             <?php else: ?><div style="border:1px solid var(--border);border-radius:4px;padding:6px;height:170px"><canvas id="signalHistory"></canvas></div><?php endif; ?></div>
     </div>
 </div>
 <div class="so-row" style="grid-template-columns:170px 1fr;align-items:start">
     <label>Speed profiles</label>
-    <table class="so-table" style="font-size:14px"><thead><tr><th>Service</th><th>Service ports</th><th>User-VLAN</th><th>Download</th><th>Upload</th><th>Action</th></tr></thead>
+    <div class="so-table-wrap"><table class="so-table" style="font-size:14px"><thead><tr><th>Service</th><th>Service ports</th><th>User-VLAN</th><th>Download</th><th>Upload</th><th>Action</th></tr></thead>
         <tbody><tr><td>Internet</td><td><?php echo $onu['service_ports'] !== null ? (int)$onu['service_ports'] : '-'; ?></td><td><?php echo $onu['vlan'] ? (int)$onu['vlan'] : '-'; ?></td>
             <td><?php echo $onu['speed_name'] !== null ? e(fmt_speed($onu['down_kbps'])) : ($onu['olt_down_kbps'] ? e(fmt_speed($onu['olt_down_kbps'])) : 'Unlimited'); ?></td>
             <td><?php echo $onu['speed_name'] !== null ? e(fmt_speed($onu['up_kbps'])) : ($onu['olt_up_kbps'] ? e(fmt_speed($onu['olt_up_kbps'])) : 'Unlimited'); ?></td>
-            <td><a href="#" data-open="editService"><i class="fa fa-cog"></i> Configure</a></td></tr></tbody></table>
+            <td><a href="#" data-open="editService"><i class="fa fa-cog"></i> Configure</a></td></tr></tbody></table></div>
 </div>
 <div class="so-row" style="grid-template-columns:170px 1fr;align-items:start">
     <label>Ethernet ports</label>
-    <table class="so-table" style="font-size:14px"><thead><tr><th>Port</th><th>Admin state</th><th>Mode</th><th>DHCP</th></tr></thead>
-        <tbody><?php for ($i = 1; $i <= max(1, (int)($type['eth_ports'] ?? 1)); $i++): ?>
-            <tr><td>eth_0/<?php echo $i; ?></td><td>Enabled</td><td>LAN</td><td>No control</td></tr><?php endfor; ?></tbody></table>
+    <div><div class="so-table-wrap"><table class="so-table" style="font-size:14px"><thead><tr><th>Port</th><th>Monitoring</th><th>Last counter read</th></tr></thead>
+        <tbody><?php for ($i = 1; $i <= (int)($type['eth_ports'] ?? 1); $i++): ?>
+            <tr><td>ETH <?php echo $i; ?></td><td><a href="traffic.php?id=<?php echo $id; ?>&port=<?php echo $i; ?>">Read traffic counters</a></td><td><?php echo isset($ethReads[$i]) ? e(when($ethReads[$i])) : 'Not read'; ?></td></tr><?php endfor; ?></tbody></table></div><p class="so-help"><a href="acs.php?onu_id=<?php echo $id; ?>">TR-069 LAN readings</a> show the interface settings reported by the ONU.</p></div>
 </div>
 <div class="so-row" style="grid-template-columns:170px 1fr">
     <label>CATV</label><div style="font-style:italic;font-size:14px"><?php echo !empty($type['catv']) ? 'Supported, not managed by SmartOLT yet' : 'Not supported by ONU-Type'; ?></div>
@@ -199,7 +205,7 @@ include __DIR__ . '/backend/templates/header.php';
     <label></label>
     <div class="so-inline">
         <?php echo post_btn('reboot', $f, 'Reboot', 'orange', 'refresh', 'Reboot this ONU? The customer is offline for about two minutes.', 'Sending the reboot...');
-        echo post_btn('resync', $f, 'Resync config', 'yellow', 'refresh', 'Put the saved VLAN, mode and speed on the OLT again? The customer drops for a few seconds.', 'Resyncing the ONU on the OLT...');
+        echo post_btn('resync', $f, 'Resync config', 'yellow', 'refresh', 'Put the saved VLAN, GEM port and speed on the OLT again? The customer drops for a few seconds.', 'Resyncing the ONU on the OLT...');
         echo post_btn('restore', $f, 'Restore defaults', 'yellow', 'undo', 'Restore this ONU to factory settings? Settings made on the ONU itself (WiFi name, password) are lost.', 'Restoring defaults...');
         echo $disabled ? post_btn('enable', $f, 'Enable ONU', 'green', 'check', 'Enable this ONU?', 'Saving on the OLT...')
             : post_btn('disable', $f, 'Disable ONU', 'yellow', 'ban', 'Disable this ONU? The customer loses internet until you enable it.', 'Saving on the OLT...'); ?>
@@ -269,7 +275,7 @@ include __DIR__ . '/backend/templates/header.php';
         <div class="so-modal-h">Configure speed profile <button type="button" data-close>&times;</button></div>
         <div class="so-modal-b">
             <?php echo csrf_field(); ?><input type="hidden" name="do" value="service"><input type="hidden" name="id" value="<?php echo $id; ?>">
-            <div class="so-field"><label class="so-label">ONU mode</label><select name="mode" class="so-select"><option value="router">Routing</option><option value="bridge" <?php echo !$router ? 'selected' : ''; ?>>Bridging</option></select></div>
+            <div class="so-field"><label class="so-label">Service template</label><input type="hidden" name="mode" value="<?php echo $router?'router':'bridge'; ?>"><p><?php echo $router?'Routing':'Bridging'; ?></p><div class="so-help">Changing gateway routing requires the ONU's management system. This form updates the OLT's VLAN and speed.</div></div>
             <div class="so-field"><label class="so-label">User VLAN-ID</label><input name="vlan" type="number" min="1" max="4094" required list="vlans" class="so-input" value="<?php echo $onu['vlan'] ? (int)$onu['vlan'] : ''; ?>">
                 <datalist id="vlans"><?php foreach ($vlans as $v): ?><option value="<?php echo (int)$v['id']; ?>"><?php endforeach; ?></datalist></div>
             <div class="so-field"><label class="so-label">Speed profile</label><select name="speed_profile_id" class="so-select"><?php echo options($speeds, $onu['speed_profile_id'] ?? '', 'Unlimited'); ?></select></div>
@@ -313,15 +319,14 @@ include __DIR__ . '/backend/templates/header.php';
         document.getElementById('liveText').textContent = 'Reading the ONU every 15 seconds';
     });
     document.getElementById('useHere').addEventListener('click', function () {
-        if (!navigator.geolocation) return;
-        navigator.geolocation.getCurrentPosition(function (p) {
+        soLocate(this, function (p) {
             document.querySelector('#editDetails input[name=lat]').value = p.coords.latitude.toFixed(7);
             document.querySelector('#editDetails input[name=lng]').value = p.coords.longitude.toFixed(7);
         });
     });
     var el = document.getElementById('signalHistory');
     if (!el) return;
-    var points = <?php echo json_encode(array_map(function ($h) { return ['t' => date('j M H:i', strtotime($h['at'])), 'rx' => $h['rx_power'] === null ? null : (float)$h['rx_power'], 'olt' => $h['olt_rx_power'] === null ? null : (float)$h['olt_rx_power']]; }, $history)); ?>;
+    var points = <?php echo json_encode(array_map(function ($h) { return ['t' => AppTime::format('j M H:i', $h['at']), 'rx' => $h['rx_power'] === null ? null : (float)$h['rx_power'], 'olt' => $h['olt_rx_power'] === null ? null : (float)$h['olt_rx_power']]; }, $history)); ?>;
     var chart;
     function build() {
         if (chart) chart.destroy();

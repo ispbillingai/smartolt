@@ -21,7 +21,7 @@ $navMenu = [
     ['Tasks', ['Tickets' => 'tickets.php', 'New ticket' => 'tickets.php?add=1', 'Task history' => 'tasks.php', 'Auto actions' => 'auto_actions.php', 'Bulk actions' => 'onus.php?select=1']],
     ['Reports', [
         'Authorizations' => 'reports.php?r=auth', 'Export' => 'reports.php?r=export', 'Import' => 'reports.php?r=import',
-        'Traffic usage' => 'reports.php?r=traffic', 'WiFi signal' => 'reports.php?r=wifi', 'ONU status changes' => 'reports.php?r=status',
+        'Ethernet traffic' => 'reports.php?r=traffic', 'WiFi signal' => 'reports.php?r=wifi', 'ONU status changes' => 'reports.php?r=status',
         'PON occupancy' => 'reports.php?r=pon', 'Splitter check' => 'reports.php?r=splitters', 'Find config mismatches (DB vs OLT)' => 'reports.php?r=mismatch',
     ]],
     ['Settings', [
@@ -38,7 +38,7 @@ $navOlts = $mgr->olts();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars(($pageTitle ?? '') !== '' ? $pageTitle . ' · SmartOLT' : 'SmartOLT'); ?></title>
-    <link rel="icon" type="image/png" href="https://hotspots.co.ke/logo.png">
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
     <script>
         // Dark is the default; the half moon icon switches, remembered per browser.
         try { if (localStorage.getItem('smartolt-theme') === 'light') document.documentElement.classList.add('light'); } catch (e) {}
@@ -48,9 +48,10 @@ $navOlts = $mgr->olts();
             grid: function () { return document.documentElement.classList.contains('light') ? 'rgba(100,116,139,.2)' : 'rgba(120,150,200,.15)'; }
         };
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link rel="stylesheet" href="assets/app.css?v=6">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="assets/vendor/font-awesome/css/font-awesome.min.css">
+    <link rel="stylesheet" href="assets/app.css?v=<?php echo filemtime(__DIR__ . '/../../assets/app.css'); ?>">
+    <script src="assets/vendor/chartjs/chart.umd.min.js"></script>
+    <script>Chart.defaults.color = soChart.tick(); Chart.defaults.borderColor = soChart.grid();</script>
 </head>
 <body<?php echo !empty($bodyClass) ? ' class="' . htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') . '"' : ''; ?>>
 <nav class="so-nav" id="soNav">

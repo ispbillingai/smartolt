@@ -10,6 +10,9 @@ class Huawei
 {
     private Telnet $t;
     private string $mode = 'config';
+    private bool $inventoryComplete = false;
+
+    public function inventoryComplete(): bool { return $this->inventoryComplete; }
 
     public function __construct(Telnet $t)
     {
@@ -18,6 +21,7 @@ class Huawei
 
     public static function connect(string $host, int $port, string $user, string $pass, int $connectTimeout = 8, int $commandTimeout = 25): self
     {
+        if ($user === '' || strlen($user) > 100 || strlen($pass) > 255 || preg_match('/[\x00-\x1f\x7f]/', $user . $pass)) throw new InvalidArgumentException('OLT credentials must fit on one line without control characters.');
         $t = new Telnet($host, $port, $connectTimeout, $commandTimeout);
         $t->readUntil('/(User ?name|Login|Username)\s*:\s*$/i', $connectTimeout + 7);
         $t->write($user . "\n");
@@ -49,6 +53,7 @@ class Huawei
     /** Send one line and return what the OLT printed, without the echoed command and the prompt. */
     public function raw(string $command, bool $allowFail = false): string
     {
+        if (preg_match('/[\r\n\x00-\x08\x0b-\x1f\x7f]/', $command)) throw new InvalidArgumentException('An OLT command must contain one printable line.');
         $this->t->write($command . "\n");
         $out = $this->t->readUntil(Telnet::PROMPT);
         $out = self::stripEcho($out, $command);
@@ -61,6 +66,7 @@ class Huawei
     /** A command that asks "(y/n)[n]:" before it acts. */
     public function confirm(string $command): string
     {
+        if (preg_match('/[\r\n\x00-\x08\x0b-\x1f\x7f]/', $command)) throw new InvalidArgumentException('An OLT command must contain one printable line.');
         $this->t->write($command . "\n");
         $out = $this->t->readUntil('/\(y\/n\)\s*\[[yn]\]\s*:\s*$|' . trim(Telnet::PROMPT, '/') . '/');
         if (preg_match('/\(y\/n\)\s*\[[yn]\]\s*:\s*$/', $out)) {
@@ -94,8 +100,9 @@ class Huawei
     public function info(): array
     {
         $this->leavePort();
-        $version = self::parseVersion($this->raw('display version', true));
-        $boards = self::parseBoards($this->raw('display board 0', true));
+        $version = self::parseVersion($this->raw('display version'));
+        $boards = self::parseBoards($this->raw('display board 0'));
+        if ($version['product'] === '' || !$boards) throw new OltError('The OLT identity or board list could not be parsed; the cached inventory was preserved.');
         return [
             'model'         => $version['product'],
             'version'       => $version['version'],
@@ -136,6 +143,7 @@ class Huawei
     {
         $this->enterPort($frame, $slot);
         $kv = self::parseKeyValues($this->raw("display ont version {$port} {$ontId}"));
+        if (!$kv) throw new OltError('The ONU software information was not recognized.');
         $this->leavePort();
         return $kv;
     }
@@ -152,21 +160,43 @@ class Huawei
     public function addVlan(int $vlan, string $desc): void
     {
         $this->leavePort();
+        if (in_array($vlan, array_column($this->vlans(), 'id'), true)) throw new OltError('That VLAN already exists on the OLT.');
         $this->raw("vlan {$vlan} smart");
-        if ($desc !== '') $this->raw("vlan desc {$vlan} description \"{$desc}\"");
+        try {
+            if ($desc !== '') $this->raw("vlan desc {$vlan} description \"{$desc}\"");
+            if (!in_array($vlan, array_column($this->vlans(), 'id'), true)) throw new OltError('The OLT did not confirm the new VLAN.');
+        } catch (Throwable $failure) {
+            try { $this->confirm("undo vlan {$vlan}"); }
+            catch (Throwable $rollback) { throw new OltError('VLAN creation was incomplete and cleanup failed. Inspect VLAN ' . $vlan . ' on the OLT.', 0, $failure); }
+            throw new OltError('VLAN creation failed and was rolled back: ' . $failure->getMessage(), 0, $failure);
+        }
     }
 
     public function deleteVlan(int $vlan): void
     {
         $this->leavePort();
         $this->confirm("undo vlan {$vlan}");
+        if (in_array($vlan, array_column($this->vlans(), 'id'), true)) throw new OltError('The OLT did not confirm that the VLAN was removed.');
+    }
+
+    public function vlans(): array
+    {
+        $this->leavePort();
+        $out = $this->raw('display vlan all');
+        $rows = self::parseVlans($out);
+        if (preg_match('/Total\s*:\s*(\d+)/i', $out, $count)) {
+            if ((int)$count[1] !== count($rows)) throw new OltError('The OLT VLAN list was incomplete.');
+        } elseif (!$rows) throw new OltError('The OLT VLAN list was not recognized.');
+        return $rows;
     }
 
     /** What the OLT holds for one ONT: its ont add line, port settings and service ports. */
     public function runningConfig(int $frame, int $slot, int $port, int $ontId): string
     {
         $this->leavePort();
-        return trim($this->raw("display current-configuration ont {$frame}/{$slot}/{$port} {$ontId}"));
+        return $this->t->withoutTranscript(function () use ($frame,$slot,$port,$ontId) {
+            return trim($this->raw("display current-configuration ont {$frame}/{$slot}/{$port} {$ontId}"));
+        });
     }
 
     /**
@@ -201,6 +231,7 @@ class Huawei
             throw new InvalidArgumentException('Only display commands can be run here, for example: display board 0');
         }
         $this->leavePort();
+        if (strpos($cmd, 'display current-configuration') === 0) return $this->t->withoutTranscript(function () use ($cmd) { return rtrim($this->raw($cmd, true)); });
         return rtrim($this->raw($cmd, true));
     }
 
@@ -220,7 +251,7 @@ class Huawei
         } else {
             $this->leavePort();
         }
-        $out = $this->raw($cmd, true);
+        $out = $key === 'config' ? $this->t->withoutTranscript(function () use ($cmd) { return $this->raw($cmd, true); }) : $this->raw($cmd, true);
         $this->leavePort();
         return rtrim($out);
     }
@@ -243,43 +274,60 @@ class Huawei
     public function servicePorts(): array
     {
         $this->leavePort();
-        return self::parseServicePortTable($this->raw('display service-port all', true));
+        return self::checkedServicePorts($this->raw('display service-port all', true));
     }
 
     /** IP traffic tables (speed limits) on the OLT: index => ['cir' => kbps, 'pir' => kbps]. */
     public function trafficTables(): array
     {
         $this->leavePort();
-        return self::parseTrafficTables($this->raw('display traffic table ip from-index 0', true));
+        $out = $this->raw('display traffic table ip from-index 0');
+        $rows = self::parseTrafficTables($out);
+        if (!$rows && !preg_match('/Total\s+(?:Num\s*)?:\s*0\b/i', $out)) throw new OltError('The traffic table list could not be parsed. No speed table was changed.');
+        return $rows;
     }
 
     public function createTrafficTable(int $index, int $kbps): void
     {
         $this->leavePort();
         $this->raw("traffic table ip index {$index} cir {$kbps} pir {$kbps} priority 0 priority-policy local-setting");
+        $tables = $this->trafficTables();
+        if (!isset($tables[$index]) || $tables[$index]['cir'] !== $kbps || $tables[$index]['pir'] !== $kbps) throw new OltError('The OLT did not confirm the new speed table.');
     }
 
     public function autofind(): array
     {
         $this->leavePort();
         $out = $this->raw('display ont autofind all', true);
-        if (stripos($out, 'Failure') !== false && stripos($out, 'does not exist') !== false) {
-            return [];
+        if (($error = self::findError($out)) !== null) {
+            if (preg_match('/^Failure:\s*(?:The\s+)?automatically\s+found\s+ONTs?\s+(?:do|does)\s+not\s+exist[.!]?\s*$/i', $error)) return [];
+            throw new OltError($error);
         }
-        return self::parseAutofind($out);
+        $rows = self::parseAutofind($out);
+        preg_match_all('/^\s*F\/S\/P\s*:/m', $out, $blocks);
+        $hasTotal = preg_match('/\b(?:The\s+)?number\s+of\s+(?:GPON\s+)?autofind\s+ONTs?\s+(?:is|are)\s*:?\s*(\d+)/i', $out, $total);
+        if (!$hasTotal || (int)$total[1] !== count($rows) || count($blocks[0]) !== count($rows)) throw new OltError('The discovered ONU list was incomplete or unrecognized. The previous discovery list was preserved.');
+        return $rows;
     }
 
     /** Every authorized ONT on frame 0, with its run state and description. */
     public function onts(): array
     {
+        $this->inventoryComplete = false;
         $this->leavePort();
         $out = $this->raw('display ont info 0 all', true);
         if (($error = self::findError($out)) !== null) {
             // An empty OLT is a valid first installation; unsupported commands/access failures are not.
-            if (preg_match('/(?:required\s+)?ONT(?:s)?\s+(?:does?|do)\s+not\s+exist/i', $error)) return [];
+            if (preg_match('/(?:required\s+)?ONT(?:s)?\s+(?:does?|do)\s+not\s+exist/i', $error)) { $this->inventoryComplete = true; return []; }
             throw new OltError($error);
         }
-        return self::parseOntInfo($out);
+        $rows = self::parseOntInfo($out);
+        if (preg_match_all('/total\s+of\s+ONTs?\s+(?:are|is)\s*:\s*(\d+)/i', $out, $totals)) {
+            if (array_sum(array_map('intval', $totals[1])) !== count($rows)) throw new OltError('The ONU inventory was incomplete. Cached customers were preserved; inspect the OLT output.');
+            $this->inventoryComplete = true;
+        }
+        if (!$rows && !$this->inventoryComplete) throw new OltError('The ONU inventory was not recognized; cached customers were preserved.');
+        return $rows;
     }
 
     /** Optical levels for every ONT on one PON port, keyed by ONT ID. Empty if the firmware cannot list them. */
@@ -294,13 +342,114 @@ class Huawei
     {
         $this->enterPort($frame, $slot);
         // An offline ONT has no light levels; that is an answer, not an error.
-        return self::parseOptical($this->raw("display ont optical-info {$port} {$ontId}", true));
+        $out = $this->raw("display ont optical-info {$port} {$ontId}", true);
+        if (($error = self::findError($out)) !== null && !preg_match('/ONT\s+is\s+not\s+online/i', $error)) throw new OltError($error);
+        return self::parseOptical($out);
     }
 
     public function ontDetail(int $frame, int $slot, int $port, int $ontId): array
     {
         $this->enterPort($frame, $slot);
-        return self::parseKeyValues($this->raw("display ont info {$port} {$ontId}"));
+        $kv = self::parseKeyValues($this->raw("display ont info {$port} {$ontId}"));
+        if (!isset($kv['run state'], $kv['control flag'])) throw new OltError('The ONU details were not recognized; the cached state was preserved.');
+        $kv['control flag'] = self::controlFlag($kv['control flag']);
+        return $kv;
+    }
+
+    /** Huawei EchoLife Service Manual, Maintenance on OLT CLI: one explicitly selected Ethernet port. */
+    public function ontEthernetStats(int $frame, int $slot, int $port, int $ontId, int $ethPort = 1): array
+    {
+        if ($ethPort < 1 || $ethPort > 48) throw new InvalidArgumentException('Choose an Ethernet port from 1 to 48.');
+        $this->enterPort($frame, $slot);
+        $out = $this->raw("display statistics ont-eth {$port} {$ontId} ont-port {$ethPort}");
+        $this->leavePort();
+        return self::parseEthernetStats($out) + ['eth_port' => $ethPort];
+    }
+
+    public static function parseEthernetStats(string $out): array
+    {
+        $kv = self::parseKeyValues($out);
+        $number = function (string $key) use ($kv) {
+            if (!isset($kv[$key]) || !preg_match('/^(\d+(?:\.\d+)?)(?:\s|$)/', $kv[$key], $m)) return null;
+            return $m[1];
+        };
+        $up = $number('up traffic (kbps)'); $down = $number('down traffic (kbps)');
+        $received = $number('received right bytes'); $sent = $number('sent right bytes');
+        if ($received === null && $sent === null && $up === null && $down === null) throw new OltError('This firmware did not return recognized ONU Ethernet statistics.');
+        return ['received_bytes' => $received, 'sent_bytes' => $sent,
+            'up_kbps' => $up === null ? null : (float)$up, 'down_kbps' => $down === null ? null : (float)$down];
+    }
+
+    /** Learned/configured client MACs on this ONU's service ports; no device configuration changes. */
+    public function macAddresses(int $frame, int $slot, int $port, int $ontId): array
+    {
+        $services = $this->servicesFor($frame, $slot, $port, $ontId); $rows = [];
+        foreach ($services as $service) {
+            $out = $this->raw('display mac-address service-port ' . $service['index'], true);
+            if (($error = self::findError($out)) !== null && !preg_match('/(?:MAC address.*does not exist|No MAC address)/i', $error)) throw new OltError($error);
+            foreach (self::parseMacAddresses($out) as $row) $rows[] = $row;
+        }
+        return $rows;
+    }
+
+    public static function parseMacAddresses(string $out): array
+    {
+        $rows = [];
+        foreach (explode("\n", $out) as $line) {
+            if (!preg_match('/^\s*(\d+)\s+(?:\S+\s+)?(gpon|epon|eth|adl|vdl|shl)\s+([0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4})\s+(\S+)\s+(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s+(\S+)\s+(\S+)\s+.*?(\d+)\s*$/i', $line, $m)) continue;
+            $hex = str_replace('-', '', $m[3]);
+            $rows[] = ['service_port' => (int)$m[1], 'mac' => strtoupper(implode(':', str_split($hex, 2))), 'type' => strtolower($m[4]),
+                'frame' => (int)$m[5], 'slot' => (int)$m[6], 'port' => (int)$m[7], 'vlan' => (int)$m[10]];
+        }
+        if (preg_match('/Total\s*:\s*(\d+)/i', $out, $m)) {
+            if ((int)$m[1] !== count($rows)) throw new OltError('The MAC address table could not be read completely.');
+        } elseif (!$rows && !preg_match('/(?:MAC address.*does not exist|No MAC address)/i', $out)) throw new OltError('The MAC address table was not recognized.');
+        return $rows;
+    }
+
+    private static function checkedServicePorts(string $out): array
+    {
+        if (($error = self::findError($out)) !== null) {
+            if (stripos($error, 'No service virtual port can be operated') !== false) return [];
+            throw new OltError($error);
+        }
+        $rows = self::parseServicePortTable($out);
+        preg_match_all('/^\s*\d+\s+\d+\s+\S+\s+gpon\b/mi', $out, $candidates);
+        preg_match_all('/^\s*\d+\s+\d+\s+\S+\s+\S+\s+/m', $out, $allCandidates);
+        $hasTotal = preg_match('/Total\s*:\s*(\d+)/i', $out, $total);
+        if (count($rows) !== count($candidates[0]) || ($hasTotal && (int)$total[1] !== count($allCandidates[0])) || (!$rows && !$hasTotal)) throw new OltError('The service-port table was not recognized completely. No service was changed.');
+        return $rows;
+    }
+
+    private function servicesFor(int $frame, int $slot, int $port, int $ontId): array
+    {
+        $this->leavePort();
+        return self::checkedServicePorts($this->raw("display service-port port {$frame}/{$slot}/{$port} ont {$ontId}", true));
+    }
+
+    /** Huawei can wrap a service-port command before its traffic-table or other arguments. */
+    private static function configCommands(string $config): array
+    {
+        $lines = [];
+        foreach (explode("\n", $config) as $line) {
+            $line = trim($line);
+            $last = count($lines) - 1;
+            if ($last >= 0 && strpos($lines[$last], 'service-port ') === 0
+                && preg_match('/^(?:inbound|outbound|traffic-table|index|rx-cttr|tx-cttr|tag-transform|multi-service|user-vlan|gpon|gemport|\d+)(?:\s|$)/', $line)) $lines[$last] .= ' ' . $line;
+            else $lines[] = $line;
+        }
+        return $lines;
+    }
+
+    private function verifyServices(int $frame, int $slot, int $port, int $ontId, array $expected): void
+    {
+        $actual = array_column($this->servicesFor($frame,$slot,$port,$ontId), null, 'index');
+        if (count($actual) !== count($expected)) throw new OltError('The previous service count could not be verified.');
+        foreach ($expected as $row) {
+            foreach (['index','vlan','gemport','up_table','down_table'] as $key) {
+                if (!isset($actual[$row['index']]) || $actual[$row['index']][$key] !== $row[$key]) throw new OltError('The previous service configuration could not be verified.');
+            }
+        }
     }
 
     // ----- Changes -----
@@ -320,8 +469,18 @@ class Huawei
         if ($ontId === null) {
             throw new OltError('The OLT did not say which ONT ID it gave the ONU.');
         }
+        // Do not remove or configure a returned ID until its serial has been read back. A stale or
+        // misleading acknowledgement must never direct cleanup at an unrelated existing customer.
+        $detail = $this->ontDetail($frame, $slot, $port, $ontId);
+        if (strtoupper(substr($detail['sn'] ?? '', 0, 16)) !== strtoupper($sn)) throw new OltError('The OLT did not confirm the authorized serial at the returned ONT ID. Inspect the OLT before retrying; no service or cleanup command was sent.');
         if ($vlan !== null) {
-            $this->addService($frame, $slot, $port, $ontId, $vlan, $gemport, $bridge, $upTable, $downTable);
+            try {
+                $this->addService($frame, $slot, $port, $ontId, $vlan, $gemport, $bridge, $upTable, $downTable);
+            } catch (Throwable $failure) {
+                try { $this->delete($frame, $slot, $port, $ontId); }
+                catch (Throwable $rollback) { throw new OltError('Authorization was incomplete and automatic cleanup failed. Inspect ONU ' . $ontId . ': ' . $failure->getMessage() . '; cleanup: ' . $rollback->getMessage(), 0, $failure); }
+                throw new OltError('Authorization was rolled back because its service could not be configured: ' . $failure->getMessage(), 0, $failure);
+            }
         }
         $this->leavePort();
         return $ontId;
@@ -330,11 +489,6 @@ class Huawei
     /** The service port that carries an ONT's internet on a VLAN, optionally speed limited by traffic tables. */
     private function addService(int $frame, int $slot, int $port, int $ontId, int $vlan, int $gemport, bool $bridge, ?int $upTable, ?int $downTable): void
     {
-        if ($bridge) {
-            // Untagged traffic on the first LAN port joins the VLAN. Router ONUs have no such port setting.
-            $this->enterPort($frame, $slot);
-            $this->raw("ont port native-vlan {$port} {$ontId} eth 1 vlan {$vlan} priority 0", true);
-        }
         $this->leavePort();
         $cmd = "service-port vlan {$vlan} gpon {$frame}/{$slot}/{$port} ont {$ontId} gemport {$gemport} multi-service user-vlan {$vlan} tag-transform translate";
         if ($upTable !== null && $downTable !== null) {
@@ -342,18 +496,56 @@ class Huawei
             $cmd .= " inbound traffic-table index {$upTable} outbound traffic-table index {$downTable}";
         }
         $this->raw($cmd);
+        $rows = $this->servicesFor($frame, $slot, $port, $ontId);
+        if (count($rows) !== 1 || $rows[0]['vlan'] !== $vlan || $rows[0]['gemport'] !== $gemport
+            || $rows[0]['up_table'] !== $upTable || $rows[0]['down_table'] !== $downTable) {
+            throw new OltError('The OLT did not confirm the requested VLAN, GEM port and speed tables.');
+        }
+        if ($bridge) {
+            // Configure untagged LAN traffic only after the service exists and has been verified.
+            $this->enterPort($frame, $slot);
+            $this->raw("ont port native-vlan {$port} {$ontId} eth 1 vlan {$vlan} priority 0");
+            $config = $this->runningConfig($frame, $slot, $port, $ontId);
+            if (!preg_match('/^\s*ont port native-vlan ' . $port . ' ' . $ontId . ' eth 1 vlan ' . $vlan . '(?:\s|$)/m', $config)) throw new OltError('The OLT did not confirm the Ethernet 1 native VLAN.');
+        }
     }
 
     /** Replace an ONT's service ports with one on the new VLAN and speed. Returns how many were replaced. */
     public function setService(int $frame, int $slot, int $port, int $ontId, int $vlan, int $gemport, bool $bridge, ?int $upTable, ?int $downTable): int
     {
-        $this->leavePort();
-        $indexes = self::parseServicePorts($this->raw("display service-port port {$frame}/{$slot}/{$port} ont {$ontId}", true));
-        foreach ($indexes as $i) {
-            $this->raw("undo service-port {$i}");
+        $before = $this->servicesFor($frame, $slot, $port, $ontId);
+        if (count($before) > 1) throw new OltError('This ONU has multiple service ports. Select the intended service on the OLT; changing all of them would also remove other services.');
+        $config = $this->runningConfig($frame, $slot, $port, $ontId);
+        $restore = [];
+        foreach (self::configCommands($config) as $line) {
+            $line = trim($line);
+            if (preg_match('/^service-port (\d+) vlan \d+ gpon ' . preg_quote("{$frame}/{$slot}/{$port}", '/') . ' ont ' . $ontId . '\b/', $line, $m)
+                && $before && (int)$m[1] === $before[0]['index']) $restore[] = $line;
         }
-        $this->addService($frame, $slot, $port, $ontId, $vlan, $gemport, $bridge, $upTable, $downTable);
-        return count($indexes);
+        if (count($restore) !== count($before)) throw new OltError('The existing service configuration could not be captured for rollback. Nothing was changed.');
+        $removed = false;
+        try {
+            foreach ($before as $row) { $this->raw('undo service-port ' . $row['index']); $removed = true; }
+            $this->addService($frame, $slot, $port, $ontId, $vlan, $gemport, $bridge, $upTable, $downTable);
+            $this->leavePort();
+        } catch (Throwable $failure) {
+            try {
+                foreach ($this->servicesFor($frame, $slot, $port, $ontId) as $row) {
+                    if ($removed || !$before) $this->raw('undo service-port ' . $row['index']);
+                }
+                if ($removed) foreach ($restore as $command) $this->raw($command);
+                if ($removed) foreach (explode("\n", $config) as $line) {
+                    if (preg_match('/^\s*(ont port native-vlan ' . $port . ' ' . $ontId . ' eth 1 vlan \d+(?: priority \d+)?)\s*$/', $line, $m)) {
+                        $this->enterPort($frame, $slot); $this->raw($m[1]); $this->leavePort();
+                    }
+                }
+                $this->verifyServices($frame,$slot,$port,$ontId,$before);
+            } catch (Throwable $rollback) {
+                throw new OltError('Service change failed and rollback could not be completed. Inspect this ONU before retrying: ' . $failure->getMessage() . '; rollback: ' . $rollback->getMessage(), 0, $failure);
+            }
+            throw new OltError('Service change failed; the previous service configuration was restored. Verify the ONU LAN settings: ' . $failure->getMessage(), 0, $failure);
+        }
+        return count($before);
     }
 
     /** Disable (the ONT stays authorized but gets no service) or enable it again. */
@@ -361,6 +553,8 @@ class Huawei
     {
         $this->enterPort($frame, $slot);
         $this->raw(($active ? 'ont activate' : 'ont deactivate') . " {$port} {$ontId}");
+        $detail = $this->ontDetail($frame, $slot, $port, $ontId);
+        if ($detail['control flag'] !== ($active ? 'active' : 'deactivated')) throw new OltError('The OLT did not confirm the requested ONU activation state.');
         $this->leavePort();
     }
 
@@ -369,6 +563,8 @@ class Huawei
     {
         $this->enterPort($frame, $slot);
         $this->raw("ont modify {$port} {$ontId} sn {$sn}");
+        $detail = $this->ontDetail($frame, $slot, $port, $ontId);
+        if (strtoupper(substr($detail['sn'] ?? '', 0, 16)) !== strtoupper($sn)) throw new OltError('The OLT did not confirm the replacement serial number.');
         $this->leavePort();
     }
 
@@ -383,13 +579,30 @@ class Huawei
     public function delete(int $frame, int $slot, int $port, int $ontId): int
     {
         $this->leavePort();
-        $indexes = self::parseServicePorts($this->raw("display service-port port {$frame}/{$slot}/{$port} ont {$ontId}", true));
-        foreach ($indexes as $i) {
-            $this->raw("undo service-port {$i}");
+        $before = $this->servicesFor($frame, $slot, $port, $ontId);
+        $indexes = array_column($before, 'index');
+        $restore = [];
+        if ($indexes) {
+            foreach (self::configCommands($this->runningConfig($frame,$slot,$port,$ontId)) as $line) {
+                $line = trim($line);
+                if (preg_match('/^service-port (\d+) vlan \d+ gpon ' . preg_quote("{$frame}/{$slot}/{$port}", '/') . ' ont ' . $ontId . '\b/', $line, $m)
+                    && in_array((int)$m[1],$indexes,true)) $restore[(int)$m[1]] = $line;
+            }
+            if (count($restore)!==count($indexes)) throw new OltError('The existing services could not be captured for recovery. Nothing was removed.');
         }
-        $this->enterPort($frame, $slot);
-        $this->raw("ont delete {$port} {$ontId}");
-        $this->leavePort();
+        $removed = [];
+        try {
+            foreach ($indexes as $i) { $this->raw("undo service-port {$i}"); $removed[]=$i; }
+            $this->enterPort($frame, $slot);
+            $this->raw("ont delete {$port} {$ontId}");
+            $check = $this->raw("display ont info {$port} {$ontId}", true);
+            if (!preg_match('/ONT(?:s)?\s+(?:does?|do)\s+not\s+exist/i', $check)) throw new OltError('The OLT did not confirm that the ONU was removed.');
+            $this->leavePort();
+        } catch (Throwable $failure) {
+            try { $this->leavePort(); foreach ($removed as $i) $this->raw($restore[$i]); $this->verifyServices($frame,$slot,$port,$ontId,$before); }
+            catch (Throwable $rollback) { throw new OltError('ONU removal failed and its services could not be recovered. Inspect the OLT: '.$failure->getMessage().'; recovery: '.$rollback->getMessage(),0,$failure); }
+            throw new OltError('ONU removal failed; removed service ports were restored. '.$failure->getMessage(),0,$failure);
+        }
         return count($indexes);
     }
 
@@ -397,6 +610,8 @@ class Huawei
     {
         $this->enterPort($frame, $slot);
         $this->raw(sprintf('ont modify %d %d desc "%s"', $port, $ontId, $desc));
+        $detail = $this->ontDetail($frame, $slot, $port, $ontId);
+        if (($detail['description'] ?? '') !== $desc) throw new OltError('The OLT did not confirm the new ONU description.');
         $this->leavePort();
     }
 
@@ -417,7 +632,7 @@ class Huawei
     /** The OLT's own error line, or null when the command went through. */
     public static function findError(string $out): ?string
     {
-        if (preg_match('/^\s*(% ?(Unknown command|Parameter error|Incomplete command|Too many parameters|Ambiguous command)[^\n]*|Failure:[^\n]*|Error:[^\n]*)/mi', $out, $m)) {
+        if (preg_match('/^\s*(%[^\n]*|Failure:\s*[^\n]+|Error:\s*[^\n]+|[^\n]*success\s*:\s*0\b[^\n]*)/mi', $out, $m)) {
             return trim($m[1]);
         }
         return null;
@@ -477,7 +692,7 @@ class Huawei
     {
         $found = [];
         foreach (preg_split('/^\s*-{10,}\s*$/m', $out) as $block) {
-            if (!preg_match('/F\/S\/P\s*:\s*(\d+)\/(\d+)\/(\d+)/', $block, $fsp)) {
+            if (!preg_match('/F\/S\/P\s*:\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/', $block, $fsp)) {
                 continue;
             }
             $kv = self::parseKeyValues($block);
@@ -491,7 +706,7 @@ class Huawei
                 'port'      => (int)$fsp[3],
                 'sn'        => strtoupper($sn[1]),
                 'sn_label'  => $sn[2] ?? '',
-                'vendor'    => $kv['vendorid'] ?? '',
+                'vendor'    => $kv['vendorid'] ?? $kv['venderid'] ?? '',
                 'equipment' => $kv['ont equipmentid'] ?? '',
                 'software'  => $kv['ont softwareversion'] ?? '',
                 'found_at'  => $kv['ont autofind time'] ?? '',
@@ -517,7 +732,7 @@ class Huawei
             if ($table === 'state' && preg_match('/^([0-9A-Fa-f]{16})\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/', $r[5], $s)) {
                 $onts[$key] = [
                     'frame' => (int)$r[1], 'slot' => (int)$r[2], 'port' => (int)$r[3], 'ont_id' => (int)$r[4],
-                    'sn' => strtoupper($s[1]), 'control_flag' => $s[2], 'run_state' => $s[3],
+                    'sn' => strtoupper($s[1]), 'control_flag' => self::controlFlag($s[2]), 'run_state' => strtolower($s[3]),
                     'config_state' => $s[4], 'match_state' => $s[5], 'description' => '',
                 ];
             } elseif ($table === 'desc' && isset($onts[$key])) {
@@ -548,9 +763,6 @@ class Huawei
         $n = '(-?\d+(?:\.\d+)?|-+)';
         preg_match_all("/^\s*(\d+)\s+{$n}\s+{$n}\s+{$n}\s+{$n}/m", $out, $m, PREG_SET_ORDER);
         foreach ($m as $r) {
-            if (strpos($r[2], '.') === false && strpos($r[3], '.') === false) {
-                continue; // not a level row
-            }
             $f = function ($v) { return is_numeric($v) ? (float)$v : null; };
             $rows[(int)$r[1]] = [
                 'rx_power' => $f($r[2]), 'tx_power' => $f($r[3]), 'olt_rx_power' => $f($r[4]),
@@ -573,7 +785,7 @@ class Huawei
         foreach (explode("\n", $out) as $line) {
             if (preg_match('/DownCause|Last\s+Last/i', $line)) { $table = 'state'; continue; }
             if (preg_match('/Distance/i', $line)) { $table = 'device'; continue; }
-            if ($table === 'state' && preg_match("/^\s*(\d+)\s+([a-z]+)\s+{$time}\s+{$time}\s+(\S+)?\s*$/i", $line, $r)) {
+            if ($table === 'state' && preg_match("/^\s*(\d+)\s+([a-z]+)\s+{$time}\s+{$time}\s+(.*?)\s*$/i", $line, $r)) {
                 $id = (int)$r[1];
                 $rows[$id] = ($rows[$id] ?? []) + [
                     'run_state'  => strtolower($r[2]),
@@ -602,7 +814,8 @@ class Huawei
         if (!preg_match('/^(\d{4}-\d\d-\d\d)\s+(\d\d:\d\d:\d\d)/', $s, $m)) {
             return null;
         }
-        return $m[1] . ' ' . $m[2];
+        try { return (new DateTimeImmutable($s))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s'); }
+        catch (Throwable $e) { return null; }
     }
 
     /**
@@ -646,6 +859,12 @@ class Huawei
         if (strpos($c, 'dying') !== false || strpos($c, 'power') !== false) return 'power_fail';
         if (preg_match('/^(los|losi|lofi|loami|lobi|sufi|drift)/', $c)) return 'los';
         return 'other';
+    }
+
+    public static function controlFlag(string $flag): string
+    {
+        $flag = strtolower(trim($flag));
+        return in_array($flag, ['deactive', 'deactivated', 'disabled'], true) ? 'deactivated' : ($flag === 'activated' ? 'active' : $flag);
     }
 
     public static function parseOntAdd(string $out): ?int

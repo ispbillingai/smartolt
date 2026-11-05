@@ -64,7 +64,7 @@ include __DIR__ . '/backend/templates/header.php';
             <td><?php echo $t['onu_id'] ? '<a href="onu.php?id=' . (int)$t['onu_id'] . '">' . e($t['onu_name'] ?? 'ONU') . '</a>' : '-'; ?></td>
             <td><?php echo e(OltManager::TICKET_TYPES[$t['type']] ?? $t['type']); ?></td>
             <td><?php echo badge(OltManager::TICKET_PRIORITIES[$t['priority']] ?? $t['priority'], in_array($t['priority'], ['high', 'urgent'], true) ? 'red' : 'grey'); ?></td>
-            <td><?php echo e($t['assignee'] ?: '-'); ?></td><td><?php echo $t['start_at'] ? e(date('d-M-Y H:i', strtotime($t['start_at']))) . ' <small class="so-muted">' . (int)$t['duration_min'] . ' min</small>' : '-'; ?></td>
+            <td><?php echo e($t['assignee'] ?: '-'); ?></td><td><?php echo $t['start_at'] ? e(AppTime::format('d-M-Y H:i', $t['start_at'])) . ' <small class="so-muted">' . (int)$t['duration_min'] . ' min</small>' : '-'; ?></td>
             <td><?php echo $t['status'] === 'open' ? badge('Open', 'orange') : badge('Closed', 'grey'); ?></td><td><?php echo e(when($t['created_at'])); ?></td>
             <td><?php echo $t['status'] === 'open' ? post_btn('close', ['id' => $t['id']], 'Close', 'green') : post_btn('reopen', ['id' => $t['id']], 'Reopen', 'grey'); ?></td></tr>
     <?php endforeach; ?></tbody>

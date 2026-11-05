@@ -10,9 +10,9 @@ $interfaces = $sample['interfaces'] ?? [];
 <?php if (empty($olt['snmp_enabled'])): ?>
     <p class="so-muted">Enable SNMP with the OLT's read-only community to read Ethernet interface status and traffic. Configure SNMPv2c and allow the monitoring source on the OLT first.</p>
 <?php else: ?>
-    <p>SNMP: <?php echo badge($olt['snmp_status'], $olt['snmp_status'] === 'online' ? 'green' : 'orange'); ?> · Last attempt: <?php echo e($olt['snmp_checked_at'] ?: 'Not checked yet'); ?></p>
+    <p>SNMP: <?php echo badge($olt['snmp_status'], $olt['snmp_status'] === 'online' ? 'green' : 'orange'); ?> · Last attempt: <?php echo e($olt['snmp_checked_at'] ? when($olt['snmp_checked_at']) : 'Not checked yet'); ?></p>
     <?php if ($olt['snmp_error']) echo alert($olt['snmp_error'], 'err'); ?>
-    <?php if ($sample): ?><p>Last successful data: <?php echo e($sample['sampled_at']); ?> · <?php echo e($sample['system']['name']); ?> · Uptime: <?php echo number_format($sample['system']['uptime_seconds'] / 3600, 1); ?> hours<br><small><?php echo e($sample['system']['description']); ?></small></p><?php endif; ?>
+    <?php if ($sample): ?><p>Last successful data: <?php echo e(when($sample['sampled_at'])); ?> · <?php echo e($sample['system']['name']); ?> · Uptime: <?php echo number_format($sample['system']['uptime_seconds'] / 3600, 1); ?> hours<br><small><?php echo e($sample['system']['description']); ?></small></p><?php endif; ?>
     <p class="so-muted">Standard IF-MIB Ethernet interfaces reported by the OLT. Rates need two successful reads and are averages between reads. Missing counters, resets and ambiguous 32-bit wraps appear as gaps. Automatic reads run every five minutes.</p>
     <?php if ($interfaces): ?>
     <div class="so-table-wrap"><table class="so-table"><thead><tr><th>Interface</th><th>Admin</th><th>Link</th><th>Capacity</th><th>Receive Mbps</th><th>Transmit Mbps</th><th>Counter</th></tr></thead><tbody>
@@ -27,7 +27,7 @@ $interfaces = $sample['interfaces'] ?? [];
     </tr><?php endforeach; ?></tbody></table></div>
     <?php
     $history = [];
-    foreach ($mgr->snmpHistory($id) as $point) $history[(int)$point['if_index']][] = $point;
+    foreach ($mgr->snmpHistory($id) as $point) { $point['at'] = AppTime::format('d M H:i', $point['at']); $history[(int)$point['if_index']][] = $point; }
     ?>
     <div class="so-half">
     <?php foreach ($interfaces as $iface): $points = $history[$iface['index']] ?? []; if (count($points) < 2) continue; ?>

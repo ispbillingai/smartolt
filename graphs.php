@@ -9,7 +9,7 @@ $pon = preg_match('#^\d+/\d+/\d+$#', (string)($_GET['pon'] ?? '')) ? $_GET['pon'
 $fmt = $range > 24 ? 'j M H:i' : 'H:i';
 
 $net = array_map(function ($r) use ($fmt) {
-    return ['t' => date($fmt, $r['t']), 'on' => $r['online'], 'pf' => $r['power_fail'], 'los' => $r['los'], 'na' => max(0, $r['offline'] - $r['los'] - $r['power_fail'])];
+    return ['t' => AppTime::format($fmt, $r['t']), 'on' => $r['online'], 'pf' => $r['power_fail'], 'los' => $r['los'], 'na' => max(0, $r['offline'] - $r['los'] - $r['power_fail'])];
 }, $mgr->networkStatus($range, $oltId));
 
 // One small graph per PON port of the chosen OLT (or the one port asked for).
@@ -18,7 +18,7 @@ if ($oltId) {
     foreach ($mgr->ports($oltId) as $p) {
         $key = "{$p['frame']}/{$p['slot']}/{$p['port']}";
         if ($pon !== '' && $key !== $pon) continue;
-        $ponGraphs[$key] = array_map(function ($r) use ($fmt) { return ['t' => date($fmt, strtotime($r['at'])), 'on' => (int)$r['online'], 'total' => (int)$r['total']]; },
+        $ponGraphs[$key] = array_map(function ($r) use ($fmt) { return ['t' => AppTime::format($fmt, $r['at']), 'on' => (int)$r['online'], 'total' => (int)$r['total']]; },
             $mgr->ponHistory($oltId, $key, $range));
     }
 }

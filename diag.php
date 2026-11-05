@@ -59,7 +59,7 @@ include __DIR__ . '/backend/templates/header.php';
         <?php echo $sel('type', 'ONU type', options($mgr->onuTypes(), $filter['onu_type_id'] ?: '', 'Any')); ?>
     </div>
     <div class="so-inline" style="margin-bottom:10px">
-        <?php echo $sel('pon_type', 'PON type', '<option value="">Any</option><option>GPON</option>'); ?>
+        <?php echo $sel('pon_type', 'PON type', '<option value="">Any</option><option value="GPON"' . ($g('pon_type') === 'GPON' ? ' selected' : '') . '>GPON</option>'); ?>
         <?php echo $sel('sector', 'Sector', options($mgr->sectors(), $filter['sector_id'] ?: '', 'Any')); ?>
         <span class="so-inline"><label class="so-label">VIP</label><select name="vip" class="so-select" onchange="this.form.submit()">
             <option value="">Any</option><option value="1" <?php echo $filter['vip'] === '1' ? 'selected' : ''; ?>>VIP</option><option value="0" <?php echo $filter['vip'] === '0' ? 'selected' : ''; ?>>Not VIP</option></select></span>

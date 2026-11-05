@@ -14,9 +14,10 @@ $sections = [
         'Presets fill that form in one click. Auto actions authorize matching ONUs by themselves with a preset, every 5 minutes.',
         'Add ONU for later authorization: enter the serial of an ONU before it is installed; it is authorized as soon as an OLT sees it.',
         'After authorizing many ONUs, press the save icon in the top bar so the OLT keeps them after a restart.',
+        'The service template records your intended handoff. Bridging sets the native VLAN on Ethernet port 1. Routing needs WAN settings provisioned by an ONU profile or its management system; selecting Routing does not create those settings.',
     ]],
     'onus' => ['Configured ONUs', [
-        'Filter by OLT, board, port, zone, splitter, VLAN, type, speed and sector, and by the status and signal icons. B and R show bridge or router ONUs.',
+        'Filter by OLT, board, port, zone, splitter, VLAN, type, speed and sector, and by the status and signal icons. B and R filter the saved service template, not a live check of the ONU gateway configuration.',
         'The list icon turns on ticking, for rebooting, disabling, enabling or setting the speed of many ONUs at once.',
         'An ONU page reads the ONU live: status, signal, distance, temperature. From there you change its service, reboot, resync, disable, replace it by a new serial or delete it.',
     ]],
@@ -30,6 +31,29 @@ $sections = [
         'Find config mismatches compares what the OLT has with what SmartOLT saved, for example a speed changed on the OLT by hand. Resync puts the saved setup back.',
         'Splitter check finds splitters with more ONUs than ports, ports used twice and ONUs from different PON ports on one splitter.',
         'Export and Import move ONU details in and out as CSV; Import matches by serial number.',
+    ]],
+    'monitoring' => ['SNMP and traffic', [
+        'Enable read-only SNMPv2c in the OLT settings. Enter the community configured on the OLT and its UDP port. Use the Uplink tab to test the connection and see Ethernet interface counters.',
+        'For a VPN connection, copy the generated MikroTik commands again after changing SNMP or OLT port settings. The tunnel carries the configured Telnet and SNMP connections.',
+        'Interface rates need two valid reads. A reboot, unavailable counter or counter wrap may leave a gap. A failed SNMP read does not mean that Telnet is unavailable.',
+        'Open an ONU and choose Open traffic monitor. Read counters once or start live readings for a selected Ethernet port. Export MAC table downloads learned addresses from the OLT.',
+        'Ethernet traffic reports show the most recent collected port readings. Byte counters cover time since the ONU reset its counters; they are not billing usage for the selected period.',
+    ]],
+    'backups' => ['Configuration backups', [
+        'Settings, Configuration backups can capture a snapshot from an OLT, download a saved snapshot or delete it. The application encrypts configuration content before storing it.',
+        'Choose a schedule per OLT: every 6, 12 or 24 hours, or weekly. The polling job captures due backups and shows the latest result. A failed read leaves prior snapshots intact and retries on a later run.',
+        'An OLT configuration save writes the running settings to the OLT itself. A backup snapshot is a separate copy in this application. Restoring a whole OLT configuration is not automated.',
+    ]],
+    'acs' => ['TR-069 and WiFi', [
+        'Connect your FreeISP ACS under Settings, VPN & TR069. Use the ACS website URL and an API key. The connection requires HTTPS except for local test servers.',
+        'The TR-069 button on an ONU opens its ACS record by matching the serial number. Read device fetches the latest ACS information. An unmatched serial stays unlinked.',
+        'WiFi and LAN values are the parameters the ONU reported to its ACS, with the last read time. A missing signal value means it was not reported; it does not mean zero signal.',
+        'Device changes sent through ACS are queued. Check the job result before assuming the ONU applied a WiFi change or reboot. The ONU must contact the ACS for queued work to run.',
+    ]],
+    'appearance' => ['Appearance and time', [
+        'The half moon icon switches between light and dark themes across the dashboard and all pages. Your browser remembers the choice.',
+        'Settings, General controls your display time zone. Reports, dates and scheduled ticket times use that zone. Existing stored timestamps remain compatible with older installations.',
+        'The dashboard marks stale device readings. Its refresh switch reloads the overview; the server polling job performs the actual periodic device reads.',
     ]],
 ];
 ?>

@@ -333,10 +333,10 @@ P=$(get "reports.php?r=splitters&reason=none")
 check "splitter check counts ONUs without a splitter" "$(has "$P" 'ONUs without a Splitter')"
 # An OLT that does not answer opens a network event; muting it moves it to the Muted tab.
 P=$(post olts.php -d csrf=$(T olts.php) -d do=save -d conn_type=direct -d "name=Dead OLT" -d host=127.0.0.1 -d telnet_port=1 -d username=root -d password=x)
-P=$(get events.php)
+P=$(get "events.php?q=Dead%20OLT")
 check "an unreachable OLT opens an event" "$(both "$(has "$P" 'OLT unreachable')" "$(has "$P" 'Ongoing')")"
 EID=$(grep -o 'name="id" value="[0-9]*"' <<< "$P" | head -1 | grep -o '[0-9]*')
-P=$(post events.php -d csrf=$(csrf "$P") -d do=mute -d id=$EID -d similar=1)
+P=$(post events.php -d csrf=$(csrf "$P") -d do=mute -d id=$EID -d similar=1 -d return=q=Dead%20OLT)
 check "mute the event" "$(both "$(has "$P" 'Event muted')" "$(hasnt "$P" 'Mute this event')")"
 P=$(get "events.php?tab=muted")
 check "muted tab shows it" "$(has "$P" 'Dead OLT')"

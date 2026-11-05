@@ -1,118 +1,145 @@
 # SmartOLT
 
-Each ISP's own OLT panel, at `https://<sub>.smartolt.ispledger.com`. Same family and look as the
-ACS (TR-069), Hotspot AP and Device Access sites: its own login, its own database, installed per ISP
-by `install.sh`. The billing dashboard's SmartOLT menu (radius `system/controllers/smartolt.php`)
-calls this site's `api.php`; everything that touches an OLT lives here.
+An ISP's OLT panel, installed per ISP with its own login and database. The ISP Ledger billing
+dashboard calls `api.php`; device access and provisioning live in this application.
 
-## Pages
+The overview, lists, forms, login and password pages share one slate/teal light and dark theme.
+The dashboard shows current availability, polling freshness, work queues, SNMP/VPN health,
+OLT details and recent changes. Availability is the last observed snapshot, not an SLA.
 
-| Page | What it does |
+## Pages and workflows
+
+| Page | Function |
 |---|---|
-| `index.php` | Sign in, first sign in password change, then the overview: waiting authorization, online, offline split by power fail, signal loss (LOS) and other, low signal (warning, critical), 24 hour network status, latest changes |
-| `olts.php`, `olt.php` | Add, edit, remove an OLT; the OLT page shows boards, every PON port (online, power fail, LOS, average and weakest signal), profiles, VLANs and speed tables |
-| `unconfigured.php` | ONUs waiting for authorization (from the last 5 minute read, or Search Now); authorize with name, ONU type picked from the model, mode, VLAN, speed, zone, ODB and port, address |
-| `onus.php` | Every authorized ONU: status with the down cause, signal, distance, VLAN, speed, zone and ODB; filter by OLT, PON port, status, zone, ODB, type, speed, VLAN; tick many to reboot, disable, enable or set speed; CSV export |
-| `onu.php` | One ONU read live; signal graph for 7 days, status history; rename, change VLAN, speed or mode on the OLT, disable or enable, replace the ONU (new serial, same settings), reboot, delete; zone, ODB, address and GPS |
-| `map.php` | ONUs and ODBs with a location on a map, coloured by status |
-| `setup.php` | Zones, ODBs (splitter boxes), ONU types and speed profiles. A speed profile becomes an OLT traffic table the first time it is used on that OLT |
-| `logs.php` | Every change, from this panel, from the billing dashboard and from the 5 minute read |
-| `settings.php` | Profile and password |
-| `api.php` | JSON API for the billing dashboard |
-| `cron.php` | Command line only: reads every OLT every 5 minutes |
+| `index.php` | Sign in, required first password change, network overview |
+| `olts.php`, `olt.php` | OLT connections, readings, boards, PON ports, profiles, VLANs, SNMP, diagnostics and generated MikroTik setup |
+| `unconfigured.php`, `authorize.php`, `later.php` | Discovery, authorization and queued authorization |
+| `onus.php`, `onu.php` | Filters, bulk operations, live ONU readings, customer details, service changes, notes, replacement and deletion |
+| `traffic.php` | ONU Ethernet-port counters, live polling, stored readings and MAC CSV |
+| `acs.php` | Connect the FreeISP ACS, read an ONU, queue device refresh/reboot or a WiFi change, track task state |
+| `map.php`, `graphs.php` | ONU/splitter locations and recorded network history |
+| `catalog.php` | Zones, sectors, splitters, ONU types, speeds and presets, including CSV import/export |
+| `reports.php` | Authorizations, imports/exports, traffic, WiFi, status, occupancy and configuration mismatches |
+| `events.php`, `tasks.php`, `info.php` | Alerts, muting and operation history |
+| `auto_actions.php`, `tickets.php` | Automatic authorization rules and scheduled technician tickets |
+| `backups.php` | Encrypted snapshots, schedules and authenticated downloads |
+| `settings.php`, `vpn.php` | Profile, password, display timezone and connection settings |
+| `cron.php` | CLI polling, automatic authorization/reconciliation, backups and retention |
 
-## Layout
+The Huawei MA5600T-family GPON driver targets MA5683T, MA5608T and MA5680T command formats over
+Telnet. Local simulations do not establish compatibility with every model/firmware combination.
+Other OLT vendors and PON families need their own driver implementation.
 
-    backend/auth/login.php          sign in, master password (bcrypt hash only), password reset
-    backend/bootstrap.php           session, login gate, CSRF, flash messages for the signed in pages
-    backend/config/database.php     written by install.sh, git ignored (databasecopy.php is the example)
-    backend/lib/Telnet.php          Telnet client: option refusal, "More" paging, "{ <cr>|... }:" prompts
-    backend/lib/Huawei.php          Huawei MA5600T series commands and output parsers
-    backend/lib/OltManager.php      OLT passwords (AES-256-GCM), per OLT lock, activity log, full read, ONU actions, history, bulk actions
-    backend/lib/Schema.php          database upgrades: install.sql is version 1, each later change runs once on the next page load
-    backend/templates/              header, sidebar, footer, login and password forms, shared UI pieces
-    tests/fake_olt.php              a pretend MA5683T on a TCP port
-    tests/api_test.php, web_test.sh end to end tests against the fake OLT
+## Device changes and identity
 
-Supported now: Huawei MA5683T, MA5608T, MA5680T over Telnet. Another vendor is another driver in
-`backend/lib/` with the same public methods as `Huawei.php`.
+Device operations share a per-OLT lock. Inventory is checked for completeness before stale rows
+can be removed. Changes to serial numbers, services, VLANs and activation are read back where
+the driver supports it; failed service changes attempt to restore the previous service.
+Partial failures are reported instead of being counted as successful operations.
 
-The dashboard is an operations overview with measured ONU availability, polling freshness,
-attention items, fleet connectivity, SNMP/VPN health and quick actions. Missing or stale readings
-are labelled; availability is a current snapshot, not an SLA measurement.
+An externally replaced serial at the same physical position creates a fresh ONU record; it
+does not inherit the previous customer's notes or settings. The explicit **Replace serial**
+operation intentionally retains that customer's configuration.
+
+Authorization's **Service template** records intended routing/bridging. Bridge authorization
+sets the native VLAN on Ethernet port 1. Routing requires WAN settings already supplied by the
+device profile or management system. Switching an existing ONU's routing mode is rejected
+because this driver does not provision its complete WAN/LAN configuration. Multiple-service
+or IPTV configurations are protected from single-service edits.
 
 ## SNMP and traffic
 
-Enable **read-only SNMPv2c** in an OLT's settings and enter its community and UDP port. The
-community is encrypted at rest and omitted from public API rows. No PHP SNMP extension is needed.
-The Uplink tab can test SNMP independently of Telnet and shows system identity/uptime, IF-MIB
-Ethernet interfaces and traffic history. Cron polls enabled OLTs every five minutes. Traffic needs
-two successful samples; resets, missing counters and ambiguous 32-bit wraps produce gaps. History
-is kept for 30 days. SNMP failure does not overwrite Telnet connection health.
+Enable read-only SNMPv2c in the OLT settings and provide its community and UDP port. The community
+is encrypted and excluded from public API rows. No PHP SNMP extension is required.
+The Uplink tab tests SNMP independently of Telnet and shows identity, uptime, IF-MIB interfaces,
+counters and traffic charts. Cron polls enabled OLTs every five minutes. Rates require two valid
+samples; resets, discontinuities and ambiguous 32-bit wraps produce gaps. SNMP history is retained
+for 30 days. Failed SNMP reads do not overwrite Telnet connection health.
 
-For direct OLTs, allow the monitoring server to reach the configured UDP port. For VPN OLTs,
-re-paste the generated MikroTik commands after enabling/changing SNMP: UDP 2161 on the tunnel is
-forwarded to the OLT's configured SNMP port. Telnet uses TCP 2323 on the tunnel. ONU optical levels
-and provisioning still use the Huawei Telnet driver; SNMP write operations and traps are not implemented.
+For direct OLTs, permit the monitoring server to reach the configured UDP port. For VPN OLTs,
+re-apply the generated MikroTik commands after changing SNMP settings: tunnel UDP 2161 forwards
+to the configured SNMP port; tunnel TCP 2323 forwards to Telnet.
+
+ONU optical readings and Ethernet-port statistics use Huawei CLI commands. **Ethernet traffic**
+reads the selected physical port, stores counters/rates and exports MAC addresses. It is not a
+subscriber billing or monthly-usage measurement. Port history retains up to 500 displayed samples
+within 24 hours; the report offers recent readings over 24 hours, 7 days or 30 days.
+SNMPv3, SET operations, traps and vendor-specific optical MIBs are not implemented.
+
+## ACS connection
+
+Open **ACS connection** on the **VPN & TR069** page under Settings and enter your FreeISP ACS website URL and API
+key. Remote connections require HTTPS with certificate verification. The API key is encrypted;
+changing the ACS address requires a key for the new address and clears cached device mappings.
+
+ONU matching uses the exact serial, including the equivalent GPON vendor-prefix/hex form.
+Ambiguous matches are rejected. Readings include the device identity, firmware, IP, reported
+WiFi/LAN parameters and connected hosts. Password parameters are excluded from saved snapshots,
+pages, reports and logs. WiFi signal is shown only when the ACS actually reports it.
+
+Refresh, reboot and WiFi changes create tracked requests. **Queued** means the ACS accepted a
+task; **Completed** requires its task status to confirm completion. Uncertain delivery is shown
+as unknown and is not automatically retried. WiFi updates use the ACS's primary-radio template;
+generic WAN, DHCP, CATV and arbitrary parameter writes are not exposed here. ACS timestamps
+without a timezone are explicitly labelled as ACS server time.
+
+## Configuration backups and scheduling
+
+**Configuration backups** under Settings captures, lists, downloads and deletes encrypted snapshots.
+Each OLT can use a 6-hour, 12-hour, daily or weekly schedule, or manual-only capture. Cron runs
+due captures, records their result and retries failed captures on a later run. Existing successful
+snapshots survive capture failures. Download/delete require an authenticated session and CSRF.
+Whole-OLT configuration restore is not implemented.
+
+Run cron every five minutes. Its database lock prevents overlapping runs; maintenance and daily
+reconciliation use saved completion times instead of depending on a particular minute.
+Back up the site's encryption key separately: it is needed for stored credentials and snapshots.
 
 ## VPN installation and upgrade
 
-On the Linux VPN server run `sudo bash vpn/setup_openvpn.sh` from this updated checkout. It installs
-the helper and status parser, preserves existing credentials/addresses, and restarts OpenVPN.
-Fresh installations use private `10.253.0.0/16`; existing installations retain their network.
-Then copy the updated commands from each OLT page to its MikroTik. Scripts explicitly enable the
-OVPN client, restrict forwarding to the OLT services and return traffic through the corresponding
-tunnel. Status checks require a running service and a fresh OpenVPN status file.
+On the Linux VPN host run `sudo bash vpn/setup_openvpn.sh <canonical-vpn-hostname>` from this
+checkout. The script preserves existing credentials, address allocations and CA material, issues
+a server certificate for that hostname, installs the helpers and restarts OpenVPN. Fresh setups
+use private `10.253.0.0/16`; existing setups retain their network. Check the script's usage before
+deployment and ensure the hostname resolves to the intended VPN server.
 
-RouterOS 6/7 commands and server helpers are fixture-tested, not verified on physical RouterOS.
-The legacy TLS setup does not authenticate the VPN server certificate on the router; trusted-CA
-distribution and server-name verification remain deployment work before calling this hardened.
+Copy each OLT's generated setup to its MikroTik. The script imports the public CA, checks its
+fingerprint and enables server-certificate/name verification. It configures an enabled OVPN client,
+restricted Telnet/SNMP forwarding and return routing. VPN status requires both a running service
+and a fresh status file. Updating this repository does not replace already installed helpers or
+already pasted router rules; those need the upgrade steps above.
 
-## Configuration backups
+Local verification includes an actual OpenVPN TLS/authentication exchange and script import on
+a disposable RouterOS 7 CHR virtual machine. RouterOS 6 generation has fixture checks but has not
+been executed on RouterOS 6. See [TESTING.md](TESTING.md) for the precise execution boundary;
+no production router or customer tunnel was used.
 
-Use **Configuration backups** under Settings to capture, list, download or delete manual snapshots.
-Configuration content is encrypted in the database and excluded from activity transcripts. Downloads
-require an authenticated session and CSRF token. Back up the site's encryption key separately;
-without it, saved passwords and configuration snapshots cannot be recovered. Restore and scheduled
-backup execution are not implemented.
+## Installation
 
-## Verification and remaining scope
+Requirements: Apache 2.4, PHP 8.2 or newer with PDO MySQL, cURL, mbstring and OpenSSL, MySQL/MariaDB,
+and the Linux OpenVPN helpers for VPN connections. The installer discovers the installed PHP-FPM
+handler. The access rules also support XAMPP's mod_php and deny private source/config/test paths.
+Charts, icons and Leaflet are served locally; map tiles still need internet access.
 
-See [TESTING.md](TESTING.md) for repeatable simulation tests and the feature comparison with the
-supplied recording. Passing these tests does not establish firmware compatibility or full SmartOLT
-feature parity. Schema upgrades apply automatically on the next application request.
+For managed provisioning, configure the wildcard DNS/TLS certificate, Git access, the fleet secret
+at `/root/smartolt_fleet_secret`, and the provisioner endpoint. `install.sh <sub>` creates a private
+staging checkout, database, site configuration and five-minute cron job. It rejects unrelated
+existing databases/accounts and validates Apache configuration before reporting success.
+The initial account is `admin` / `admin` and requires a password change.
 
-## API auth
+`backend/config/database.php` is installation-specific and ignored by Git. Keep it and the
+encryption key when updating an existing installation. `install.sql` is the base schema;
+`backend/lib/Schema.php` applies later upgrades automatically on application startup. Existing
+timestamps retain their Nairobi storage convention; the selected timezone controls local date
+filters, display and ticket input.
 
-`Authorization: Bearer <token>` where `token = hash_hmac('sha256', <subdomain>, <fleet secret>)`.
-The fleet secret is in `/root/smartolt_fleet_secret` on the SmartOLT box (install.sh copies it into
-the site config) and in the billing dashboard controller. It is never in this repo.
+## API and verification
 
-## Install
+Use `Authorization: Bearer <token>`, where the token is
+`hash_hmac('sha256', <subdomain>, <fleet secret>)`. Read operations permit GET; mutations require
+POST. Query-string tokens are rejected. Never include the deployment's fleet secret in source.
 
-One time on the SmartOLT box:
-
-1. Apache with PHP 8 (php-fpm as in `.htaccess`), MySQL, `mod_ssl`.
-2. Wildcard certificate for `*.smartolt.ispledger.com` in `/etc/letsencrypt/live/smartolt.ispledger.com/`.
-3. `/root/smartolt_fleet_secret` with the fleet secret.
-4. Git access to this private repo through `/root/.ssh`.
-5. The provisioner at `https://install.smartolt.ispledger.com/install.php`, which creates the DNS record and runs
-   `install.sh <sub>` (the dashboard's Turn On SmartOLT button calls it).
-
-Per ISP: `sudo /root/install.sh <sub>` clones the repo to `/var/www/html/<sub>`, writes the config with a fresh
-encryption key, creates the database from `install.sql`, adds the 5 minute cron and the Apache site.
-First sign in is `admin` / `admin` and must be changed.
-
-The OLT must be reachable from this box on its Telnet port: a public IP, or a port forward on the
-ISP's router to the OLT management IP.
-
-## Test
-
-    php tests/fake_olt.php 47023
-    php -S 127.0.0.1:8099                       (site folder, with a test backend/config/database.php)
-    php tests/api_test.php http://127.0.0.1:8099/api.php 127.0.0.1 47023 <sub> <fleet secret>
-    bash tests/web_test.sh http://127.0.0.1:8099 47023   (fresh database)
-
-The fake OLT follows Huawei's documented output. Confirm on a real MA5683T before going live:
-`display ont info 0 all` from config mode and `display ont optical-info <port> all` (older firmware
-may lack the `all` form; the list then shows no levels, the ONU page still reads them one by one).
+[TESTING.md](TESTING.md) records repeatable integration/browser tests, concrete failure cases and
+the remaining feature gaps compared with the supplied recording. The Windows runner creates a
+new local MariaDB database and a disposable application copy; it never targets the site's existing
+database configuration. Passing simulations does not certify a physical OLT, router or ONU.

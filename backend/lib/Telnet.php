@@ -14,6 +14,7 @@ class Telnet
     private string $buffer = '';
     private string $negotiation = '';
     private string $log = '';
+    private bool $recordTranscript = true;
     private int $commandTimeout;
 
     // A device prompt: hostname, optional "(config...)" mode, then > or #, at the very end of the output.
@@ -21,10 +22,12 @@ class Telnet
 
     public function __construct(string $host, int $port, int $connectTimeout = 8, int $commandTimeout = 25)
     {
+        if ($port < 1 || $port > 65535 || $connectTimeout < 1 || $commandTimeout < 1) throw new InvalidArgumentException('Invalid Telnet connection settings.');
         $this->commandTimeout = $commandTimeout;
         $errno = 0;
         $errstr = '';
-        $sock = @stream_socket_client("tcp://{$host}:{$port}", $errno, $errstr, $connectTimeout);
+        $endpoint = filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) ? "[{$host}]" : $host;
+        $sock = @stream_socket_client("tcp://{$endpoint}:{$port}", $errno, $errstr, $connectTimeout);
         if (!$sock) {
             throw new TelnetError("Could not reach {$host}:{$port} ({$errstr})");
         }
@@ -52,9 +55,18 @@ class Telnet
         return $this->log;
     }
 
+    /** Device configurations may contain subscriber credentials; never copy them to action logs. */
+    public function withoutTranscript(callable $read)
+    {
+        $previous = $this->recordTranscript;
+        $this->recordTranscript = false;
+        try { return $read(); }
+        finally { $this->recordTranscript = $previous; }
+    }
+
     public function write(string $text, bool $secret = false): void
     {
-        $this->log .= $secret ? "********\n" : $text;
+        if ($this->recordTranscript) $this->log .= $secret ? "********\n" : $text;
         $deadline = microtime(true) + $this->commandTimeout;
         while ($text !== '') {
             $written = @fwrite($this->sock, $text);
@@ -85,7 +97,7 @@ class Telnet
             $clean = self::clean($this->buffer);
             if (preg_match($pattern, $clean)) {
                 $this->buffer = '';
-                $this->log .= $clean;
+                if ($this->recordTranscript) $this->log .= $clean;
                 return $clean;
             }
             // "{ <cr>|ontid<U><0,127> }:" means the command line would accept more; Enter takes it as typed.
@@ -95,7 +107,7 @@ class Telnet
                 continue;
             }
             if (microtime(true) > $deadline) {
-                $this->log .= $clean;
+                if ($this->recordTranscript) $this->log .= $clean;
                 throw new TelnetError('The OLT did not answer in time.');
             }
             usleep(30000);

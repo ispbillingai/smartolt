@@ -1,10 +1,20 @@
-<FilesMatch "\.php$">
-    SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
-</FilesMatch>
+# Legacy installs used this handler. install.sh substitutes the detected socket for new sites,
+# or removes this block when Apache mod_php handles PHP. Keep it for safe existing-site upgrades.
+<IfModule !php_module>
+    <IfModule !php7_module>
+        <FilesMatch "\.php$">
+            SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
+        </FilesMatch>
+    </IfModule>
+</IfModule>
 DirectoryIndex index.php index.html
+Options -Indexes
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
 # Source, local test fixtures and repository metadata are never public downloads.
-RedirectMatch 404 "(?i)^/(?:\.git|\.test-runtime|backend|tests|vpn)(?:/|$)"
-<FilesMatch "(?i)\.(sql|sh|md|log)$">
+RedirectMatch 404 "(?i)/(?:\.git|\.test-runtime|backend|tests|vpn)(?:/|$)"
+<FilesMatch "(?i)\.(sql|sh|md|log|ps1|awk)$">
     Require all denied
 </FilesMatch>
 # Apache does not hand the Authorization header to PHP-FPM on its own; api.php reads the Bearer token from it.

@@ -10,7 +10,10 @@ param(
     [string]$MariaDbBin = 'F:\xampp\mysql\bin',
     [string]$Bash = 'C:\Program Files\Git\bin\bash.exe',
     [string]$Node = 'node.exe',
-    [switch]$BrowserTest
+    [string]$Apache = '',
+    [string]$PhpRoot = 'F:\xampp\php',
+    [switch]$BrowserTest,
+    [switch]$Components
 )
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -21,7 +24,7 @@ $processes = [System.Collections.Generic.List[System.Diagnostics.Process]]::new(
 $failures = [System.Collections.Generic.List[string]]::new()
 $Php = (Get-Command $Php -ErrorAction Stop).Source
 $Bash = (Get-Command $Bash -ErrorAction Stop).Source
-if ($BrowserTest) {
+if ($BrowserTest -or $Components) {
     $Node = (Get-Command $Node -ErrorAction Stop).Source
     $nodeVersion = & $Node -p 'process.versions.node.split(".")[0]'
     if ($LASTEXITCODE -ne 0 -or [int]$nodeVersion -lt 20) { throw 'BrowserTest needs Node.js 20 or newer. Pass its path using -Node.' }
@@ -72,6 +75,57 @@ function Run-Test([string]$Name, [string]$Executable, [string[]]$Arguments) {
     & $Executable @Arguments | Tee-Object -FilePath (Join-Path $runtime "$Name-results.txt")
     if ($LASTEXITCODE -ne 0) { $failures.Add($Name) }
 }
+function Start-TestWeb {
+    if (!$Apache) { return Start-Local 'web' $Php ($phpFlags + @('-d', 'display_errors=1', '-d', 'output_buffering=1048576', '-S', "127.0.0.1:$webPort", '-t', $site)) }
+    $apacheExe = (Get-Command $Apache -ErrorAction Stop).Source
+    $apacheRoot = (Resolve-Path (Join-Path (Split-Path $apacheExe) '..')).Path.Replace('\','/')
+    $phpPath = (Resolve-Path -LiteralPath $PhpRoot).Path.Replace('\','/')
+    foreach ($dll in @('php8ts.dll','libpq.dll','libsqlite3.dll','php8apache2_4.dll')) {
+        if (!(Test-Path -LiteralPath (Join-Path $PhpRoot $dll))) { throw "Missing Apache PHP module dependency: $dll" }
+    }
+    $sessionPath = Join-Path $runtime 'sessions'
+    New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
+    $conf = @"
+ServerRoot "$apacheRoot"
+ServerName 127.0.0.1
+Listen 127.0.0.1:$webPort
+PidFile "$($runtime.Replace('\','/'))/httpd.pid"
+ErrorLog "$($runtime.Replace('\','/'))/apache-error.log"
+LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule authz_host_module modules/mod_authz_host.so
+LoadModule alias_module modules/mod_alias.so
+LoadModule dir_module modules/mod_dir.so
+LoadModule mime_module modules/mod_mime.so
+LoadModule setenvif_module modules/mod_setenvif.so
+LoadModule proxy_module modules/mod_proxy.so
+LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so
+TypesConfig "$apacheRoot/conf/mime.types"
+LoadFile "$phpPath/php8ts.dll"
+LoadFile "$phpPath/libpq.dll"
+LoadFile "$phpPath/libsqlite3.dll"
+LoadModule php_module "$phpPath/php8apache2_4.dll"
+PHPINIDir "$phpPath"
+php_admin_value session.save_path "$($sessionPath.Replace('\','/'))"
+php_admin_value upload_tmp_dir "$($runtime.Replace('\','/'))"
+<FilesMatch "\.php$">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+DocumentRoot "$($site.Replace('\','/'))"
+<Directory />
+    AllowOverride None
+    Require all denied
+</Directory>
+<Directory "$($site.Replace('\','/'))">
+    AllowOverride All
+    Require all granted
+</Directory>
+"@
+    $configPath = Join-Path $runtime 'httpd.conf'
+    Write-Utf8 $configPath $conf
+    & $apacheExe -t -f $configPath
+    if ($LASTEXITCODE) { throw 'Isolated Apache configuration is invalid' }
+    return Start-Local 'web-apache' $apacheExe @('-X','-f',$configPath)
+}
 
 New-Item -ItemType Directory -Path $runtime, $site, $data | Out-Null
 # Copy just application files, excluding any installation credentials and all live runtime files.
@@ -85,12 +139,14 @@ foreach ($dir in @('assets', 'backend', 'tests', 'vpn')) {
         }
     }
 }
-Get-ChildItem -LiteralPath $project -File | Where-Object { $_.Extension -in @('.php', '.sql') -or $_.Name -eq '.htaccess' } | Copy-Item -Destination $site
+Get-ChildItem -LiteralPath $project -File | Where-Object { $_.Extension -in @('.php', '.sql', '.sh') -or $_.Name -eq '.htaccess' } | Copy-Item -Destination $site
 $dbPort = Free-TcpPort
 $webPort = Free-TcpPort
 while ($webPort -eq $dbPort) { $webPort = Free-TcpPort }
 $oltPort = Free-TcpPort
 while ($oltPort -in @($dbPort, $webPort)) { $oltPort = Free-TcpPort }
+$acsPort = Free-TcpPort
+while ($acsPort -in @($dbPort, $webPort, $oltPort)) { $acsPort = Free-TcpPort }
 $udp = [Net.Sockets.UdpClient]::new([Net.IPEndPoint]::new([Net.IPAddress]::Loopback, 0))
 $snmpPort = $udp.Client.LocalEndPoint.Port
 $udp.Dispose()
@@ -122,6 +178,7 @@ echo "Isolated test database reset\n";
 Write-Utf8 (Join-Path $runtime 'reset.php') ($reset.Replace('DBPORT', [string]$dbPort).Replace('DBPASS', $password))
 try {
     $init = Start-Local 'db-init' $installer @("--datadir=$data", "--password=$password", "--port=$dbPort", '--silent')
+    $null = $init.Handle
     $init.WaitForExit()
     if ($init.ExitCode -ne 0) { throw "Isolated database initialization failed. See $runtime" }
     $ini = Join-Path $data 'my.ini'
@@ -130,15 +187,20 @@ try {
     Wait-Tcp $dbProcess $dbPort
     & $Php @phpFlags (Join-Path $runtime 'reset.php')
     if ($LASTEXITCODE) { throw 'Database initialization failed' }
-    $web = Start-Local 'web' $Php ($phpFlags + @('-d', 'display_errors=1', '-S', "127.0.0.1:$webPort", '-t', $site))
+    $web = Start-TestWeb
     $olt = Start-Local 'olt' $Php ($phpFlags + @((Join-Path $site 'tests/fake_olt.php'), [string]$oltPort))
     $snmp = Start-Local 'snmp' $Php ($phpFlags + @((Join-Path $site 'tests/fake_snmp.php'), [string]$snmpPort))
+    $acs = Start-Local 'acs' $Php ($phpFlags + @('-S', "127.0.0.1:$acsPort", (Join-Path $site 'tests/fake_acs.php')))
     Wait-Tcp $web $webPort
     Wait-Tcp $olt $oltPort
+    Wait-Tcp $acs $acsPort
     Start-Sleep -Milliseconds 300
     if ($snmp.HasExited) { throw 'SNMP fixture failed to start' }
     Run-Test 'api' $Php ($phpFlags + @((Join-Path $site 'tests/api_test.php'), "$base/api.php", '127.0.0.1', [string]$oltPort, 'demo', $fleet, [string]$snmpPort))
+    Run-Test 'api-access' $Php ($phpFlags + @((Join-Path $site 'tests/api_access_test.php'), "$base/api.php", 'demo', $fleet))
     Run-Test 'storage' $Php ($phpFlags + @((Join-Path $site 'tests/storage_test.php')))
+    Run-Test 'catalog-integrity' $Php ($phpFlags + @((Join-Path $site 'tests/catalog_integrity_test.php')))
+    Run-Test 'backend-integrity' $Php ($phpFlags + @((Join-Path $site 'tests/backend_integrity_test.php')))
     Stop-Process -Id $olt.Id
     $olt.WaitForExit()
     & $Php @phpFlags (Join-Path $runtime 'reset.php')
@@ -146,15 +208,23 @@ try {
     $olt = Start-Local 'olt-web' $Php ($phpFlags + @((Join-Path $site 'tests/fake_olt.php'), [string]$oltPort))
     Wait-Tcp $olt $oltPort
     Run-Test 'web' $Bash @('--noprofile', '--norc', (Join-Path $site 'tests/web_test.sh'), $base, [string]$oltPort, [string]$snmpPort)
+    Run-Test 'session' $Php ($phpFlags + @((Join-Path $site 'tests/session_test.php'), $base))
+    Run-Test 'acs' $Php ($phpFlags + @((Join-Path $site 'tests/acs_test.php'), "http://127.0.0.1:$acsPort", $base))
     Run-Test 'dashboard' $Php ($phpFlags + @((Join-Path $site 'tests/dashboard_test.php')))
     if ($BrowserTest) {
         # Resolve Playwright through the caller's NODE_PATH and browser through SMARTOLT_BROWSER.
         Run-Test 'browser' $Node @((Join-Path $site 'tests/browser_test.cjs'), $base)
     }
-    foreach ($suite in @('telnet', 'snmp', 'snmp_rates', 'vpn')) {
+    if ($Components) {
+        $env:SMARTOLT_TEST_ACS_URL = "http://127.0.0.1:$acsPort"
+        Run-Test 'components' $Node @((Join-Path $site 'tests/browser_components.cjs'), $base)
+    }
+    foreach ($suite in @('telnet', 'snmp', 'snmp_rates', 'vpn', 'time', 'driver_integrity')) {
         Run-Test $suite $Php ($phpFlags + @((Join-Path $site "tests/${suite}_test.php")))
     }
     Run-Test 'vpn-shell' $Bash @('--noprofile', '--norc', (Join-Path $site 'tests/vpn_test.sh'))
+    Run-Test 'vpn-certificates' $Bash @('--noprofile', '--norc', (Join-Path $site 'tests/vpn_certificate_test.sh'))
+    Run-Test 'installer' $Bash @('--noprofile', '--norc', (Join-Path $site 'tests/install_test.sh'))
     if ($failures.Count) { throw ('Failed suites: ' + ($failures -join ', ')) }
     Write-Output "All local suites passed. Logs: $runtime"
 } finally {

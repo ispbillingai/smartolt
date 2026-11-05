@@ -5,7 +5,7 @@
 
 class Schema
 {
-    const VERSION = 7;
+    const VERSION = 9;
 
     public static function ensure(PDO $db): void
     {
@@ -16,7 +16,7 @@ class Schema
         }
         // Two requests may arrive together on the first load after an update.
         if ((int)$db->query("SELECT GET_LOCK(CONCAT(DATABASE(), '_schema'), 30)")->fetchColumn() !== 1) {
-            return;
+            throw new RuntimeException('The database upgrade is still running in another request. Retry in a moment.');
         }
         try {
             $have = (int)($db->query("SELECT v FROM meta WHERE k='schema_version'")->fetchColumn() ?: 1);
@@ -335,6 +335,49 @@ class Schema
             `created_by` varchar(60) NOT NULL DEFAULT '', `created_at` datetime NOT NULL,
             PRIMARY KEY (`id`), KEY `olt_created` (`olt_id`, `created_at`),
             CONSTRAINT `fk_backups_olt` FOREIGN KEY (`olt_id`) REFERENCES `olts` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /** Keep intended configuration separate from the latest device observation. */
+    private static function v8(PDO $db): void
+    {
+        self::addColumn($db, 'onus', 'olt_vlan', 'smallint unsigned DEFAULT NULL');
+        self::addColumn($db, 'onus', 'olt_gemport', 'smallint unsigned DEFAULT NULL');
+        $db->exec('UPDATE onus SET olt_vlan=vlan, olt_gemport=gemport');
+        self::addColumn($db, 'olts', 'backup_interval_hours', 'smallint unsigned NOT NULL DEFAULT 0');
+        self::addColumn($db, 'olts', 'last_backup_at', 'datetime DEFAULT NULL');
+        self::addColumn($db, 'olts', 'backup_error', "varchar(500) NOT NULL DEFAULT ''");
+        $db->exec("CREATE TABLE IF NOT EXISTS onu_ethernet_samples (
+            id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            onu_id int unsigned NOT NULL, eth_port smallint unsigned NOT NULL,
+            received_bytes decimal(20,0) DEFAULT NULL, sent_bytes decimal(20,0) DEFAULT NULL,
+            up_kbps double DEFAULT NULL, down_kbps double DEFAULT NULL, at datetime NOT NULL,
+            KEY onu_at (onu_id, at),
+            CONSTRAINT fk_eth_onu FOREIGN KEY (onu_id) REFERENCES onus(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /** ACS stores only an encrypted connection key and explicitly safe device fields. */
+    private static function v9(PDO $db): void
+    {
+        $db->exec("CREATE TABLE IF NOT EXISTS acs_settings (
+            id tinyint unsigned NOT NULL DEFAULT 1 PRIMARY KEY, base_url varchar(255) NOT NULL DEFAULT '',
+            api_key_enc text, enabled tinyint(1) NOT NULL DEFAULT 0, checked_at datetime DEFAULT NULL,
+            status varchar(20) NOT NULL DEFAULT 'unconfigured', last_error varchar(500) NOT NULL DEFAULT ''
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $db->exec("CREATE TABLE IF NOT EXISTS acs_devices (
+            onu_id int unsigned NOT NULL PRIMARY KEY, acs_device_id int unsigned NOT NULL,
+            serial varchar(64) NOT NULL, snapshot_json mediumtext, checked_at datetime DEFAULT NULL,
+            last_error varchar(500) NOT NULL DEFAULT '',
+            CONSTRAINT fk_acs_onu FOREIGN KEY (onu_id) REFERENCES onus(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $db->exec("CREATE TABLE IF NOT EXISTS acs_jobs (
+            id int unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, onu_id int unsigned DEFAULT NULL,
+            acs_device_id int unsigned NOT NULL, external_job_id int unsigned DEFAULT NULL,
+            request_id varchar(64) NOT NULL, operation varchar(20) NOT NULL, status varchar(20) NOT NULL,
+            task_ids_json text, created_at datetime NOT NULL, updated_at datetime NOT NULL,
+            last_error varchar(500) NOT NULL DEFAULT '', UNIQUE KEY request_id(request_id), KEY onu_id(onu_id),
+            CONSTRAINT fk_acs_job_onu FOREIGN KEY (onu_id) REFERENCES onus(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
 }

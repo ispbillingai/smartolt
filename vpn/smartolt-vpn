@@ -15,6 +15,14 @@ CCD="$DATA/ccd"
 STATUS=/var/log/openvpn/smartolt-status.log
 PARSER=/usr/local/libexec/smartolt-vpn-status.awk
 
+# Public trust material only; the CA private key never leaves the PKI directory.
+if [ "${1:-}" = trust ]; then
+    [ "$#" -eq 1 ] || { echo 'usage: smartolt-vpn trust' >&2; exit 2; }
+    [ -s "$DATA/server-name" ] && [ -s "$DATA/ca.crt" ] || { echo 'VPN certificate trust is not configured. Run vpn/setup_openvpn.sh with the canonical VPN hostname.' >&2; exit 5; }
+    cat "$DATA/server-name" "$DATA/ca.crt"
+    exit 0
+fi
+
 user="${2:-}"
 [[ "$user" =~ ^[a-z0-9][a-z0-9-]{2,60}$ ]] || { echo "bad username" >&2; exit 2; }
 

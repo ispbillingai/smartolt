@@ -2,13 +2,14 @@
 // Set session cookie parameters before starting the session
 $session_lifetime = 30 * 24 * 60 * 60; // 30 days
 session_set_cookie_params([
-    'lifetime' => $session_lifetime,
+    'lifetime' => 0,
     'path' => '/',
     'domain' => '',
     'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
     'httponly' => true,
     'samesite' => 'Strict'
 ]);
+ini_set('session.gc_maxlifetime', (string)$session_lifetime);
 session_start();
 if (empty($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(32));

@@ -10,6 +10,8 @@
 
 declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
 set_time_limit(180);
 
 require_once __DIR__ . '/backend/lib/OltManager.php';
@@ -17,7 +19,7 @@ require_once __DIR__ . '/backend/lib/OltManager.php';
 function out(array $data, int $code = 200): void
 {
     http_response_code($code);
-    echo json_encode($data, JSON_UNESCAPED_SLASHES);
+    echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
@@ -26,8 +28,17 @@ function fail(string $error, int $code = 400): void
     out(['ok' => false, 'error' => $error], $code);
 }
 
-$in = json_decode((string)file_get_contents('php://input'), true);
-if (!is_array($in)) {
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if (!in_array($method, ['GET', 'POST'], true)) {
+    header('Allow: GET, POST');
+    fail('Use GET for read operations or POST with a JSON body.', 405);
+}
+if ($method === 'POST') {
+    $body = (string)file_get_contents('php://input');
+    $decoded = json_decode($body);
+    if (!$decoded instanceof stdClass) fail('The request body must be a JSON object.', 400);
+    $in = json_decode($body, true);
+} else {
     $in = $_GET;
 }
 
@@ -40,13 +51,23 @@ $mgr->source = 'api';
 $mgr->ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
 
 $given = '';
-if (preg_match('/^Bearer\s+([0-9a-f]{64})$/', (string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''), $m)) {
+if (preg_match('/^(?i:Bearer)\s+([0-9a-f]{64})$/', (string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''), $m)) {
     $given = $m[1];
-} elseif (isset($in['token'])) {
+} elseif ($method === 'POST' && isset($in['token']) && is_string($in['token'])) {
     $given = (string)$in['token'];
 }
 if ($given === '' || !hash_equals($mgr->apiToken(), $given)) {
     fail('Unauthorized', 401);
+}
+if (!isset($in['action']) || !is_string($in['action']) || $in['action'] === '') fail('Provide an action name.', 400);
+if (isset($in['id']) && (!is_int($in['id']) && !(is_string($in['id']) && ctype_digit($in['id'])))) fail('The ID must be an integer.', 400);
+
+// URL query strings are commonly logged. Tokens are accepted only in the header or JSON POST.
+// Read endpoints remain available by GET; any device/configuration mutation requires POST.
+$readActions = ['ping', 'olt.list', 'olt.get', 'olt.vpn', 'onu.list', 'onu.get', 'onu.unconfigured', 'stats', 'catalogs.list', 'actions.list', 'onu.history'];
+if ($method === 'GET' && !in_array((string)($in['action'] ?? ''), $readActions, true)) {
+    header('Allow: POST');
+    fail('This operation requires POST with a JSON body.', 405);
 }
 
 $id = (int)($in['id'] ?? 0);
@@ -143,7 +164,8 @@ try {
             out(['ok' => true, 'sn' => $mgr->replaceSn($id, (string)($in['sn'] ?? ''))]);
 
         case 'onu.bulk':
-            out(['ok' => true] + $mgr->bulk((array)($in['ids'] ?? []), (string)($in['bulk_action'] ?? ''), (int)($in['speed_profile_id'] ?? 0)));
+            $bulk = $mgr->bulk((array)($in['ids'] ?? []), (string)($in['bulk_action'] ?? ''), (int)($in['speed_profile_id'] ?? 0));
+            out(['ok' => !$bulk['failed']] + $bulk, $bulk['failed'] ? ($bulk['done'] ? 207 : 502) : 200);
 
         case 'onu.history':
             out(['ok' => true, 'signal' => $mgr->signalHistory($id, min(30, max(1, (int)($in['days'] ?? 7)))), 'events' => $mgr->statusEvents($id)]);

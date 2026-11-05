@@ -22,6 +22,10 @@ if (($argv[1] ?? '') === '--server') {
     fwrite($socket, "\r\nrow two\r\n{ <cr>|option<K> }: ");
     if (fread($socket, 1) !== "\n") exit(6);
     fwrite($socket, "\r\nOLT#");
+    fgets($socket);
+    fwrite($socket, "display configuration\r\npassword subscriber-secret\r\nOLT#");
+    fgets($socket);
+    fwrite($socket, "display after-config\r\nnormal response\r\nOLT#");
     fgets($socket); // graceful quit from close()
     fclose($socket); fclose($server); exit(0);
 }
@@ -41,6 +45,10 @@ try {
     $text = $telnet->readUntil(Telnet::PROMPT);
     checkTelnet('paging continues and optional parameter prompt is answered', strpos($text, 'row one') !== false && strpos($text, 'row two') !== false && strpos($text, '<cr>') === false && strpos($text, 'More') === false);
     checkTelnet('password is excluded from transcript', strpos($telnet->transcript(), 'test-secret') === false);
+    $sensitive = $telnet->withoutTranscript(function () use ($telnet) { $telnet->write("display configuration\n"); return $telnet->readUntil(Telnet::PROMPT); });
+    checkTelnet('config read remains available without leaking credentials to activity log', strpos($sensitive,'subscriber-secret')!==false && strpos($telnet->transcript(),'subscriber-secret')===false && strpos($telnet->transcript(),'display configuration')===false);
+    $telnet->write("display after-config\n"); $telnet->readUntil(Telnet::PROMPT);
+    checkTelnet('normal transcript recording resumes after configuration read', strpos($telnet->transcript(),'normal response')!==false);
     checkTelnet('terminal escapes and backspaces are removed', Telnet::clean("ab\x08c\x1b[0m\r\n") === "ac\n");
     $telnet->close();
 } finally {
@@ -67,4 +75,10 @@ checkTelnet('new OLT with no ONUs remains a valid inventory', $driver->onts() ==
 $driver = new Huawei(new ScriptedTelnet(["display ont info 0 all\n% Unknown command\nOLT(config)#"]));
 try { $driver->onts(); checkTelnet('failed inventory is never reported as an empty success', false); }
 catch (OltError $e) { checkTelnet('failed inventory is never reported as an empty success', strpos($e->getMessage(), 'Unknown command') !== false); }
+$inventory="F/S/P ONT SN Control Run Config Match Protect\n0/ 1/0 0 4857544300000001 active online normal match no\nThe total of ONTs are: 2\n";
+$driver = new Huawei(new ScriptedTelnet(["display ont info 0 all\n".$inventory."OLT(config)#"]));
+try { $driver->onts(); checkTelnet('truncated inventory count fails before reconciliation',false); }
+catch (OltError $e) { checkTelnet('truncated inventory count fails before reconciliation',strpos($e->getMessage(),'incomplete')!==false); }
+$driver = new Huawei(new ScriptedTelnet(["display ont info 0 all\n".str_replace('ONTs are: 2','ONTs are: 1',$inventory)."OLT(config)#"]));
+checkTelnet('complete inventory count is explicitly verified', count($driver->onts())===1 && $driver->inventoryComplete());
 exit($fails ? 1 : 0);

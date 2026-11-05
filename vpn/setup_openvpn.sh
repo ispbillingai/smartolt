@@ -1,7 +1,8 @@
 #!/bin/bash
 # One time on the SmartOLT box, as root: the OpenVPN server that ISPs' MikroTik routers dial so
 # SmartOLT can reach an OLT that has no public IP.
-#   sudo bash vpn/setup_openvpn.sh
+#   sudo bash vpn/setup_openvpn.sh vpn.example.com
+# Use a DNS name pointing directly to this server (not a reverse proxy). Reruns reuse it.
 #
 # Each OLT gets its own login and a fixed private tunnel IP, made by /usr/local/sbin/smartolt-vpn
 # when the ISP chooses "Through the SmartOLT VPN" for an OLT. On the router a dst-nat sends
@@ -14,26 +15,21 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIR=/etc/openvpn/server
 PKI=/etc/openvpn/smartolt-pki
-
-apt-get install -y -q openvpn easy-rsa netcat-openbsd iptables gawk util-linux >/dev/null
-
-# Keys: a CA and the server certificate. Routers log in with a username and password, no client cert.
-if [ ! -f "$PKI/pki/issued/server.crt" ]; then
-    rm -rf "$PKI"
-    make-cadir "$PKI"
-    cd "$PKI"
-    ./easyrsa --batch init-pki
-    EASYRSA_REQ_CN="SmartOLT VPN CA" ./easyrsa --batch build-ca nopass
-    ./easyrsa --batch --days=3650 build-server-full server nopass
-    # MikroTik RouterOS 6 needs classic Diffie Hellman
-    ./easyrsa --batch gen-dh
-    cd - >/dev/null
-fi
-
-# Logins and fixed IPs under /var/lib: the sites' PHP-FPM runs with /etc read-only (ProtectSystem).
 DATA=/var/lib/smartolt-vpn
 mkdir -p "$DATA/ccd" /var/log/openvpn "$DIR" /usr/local/libexec
 chmod 700 "$DATA"
+server_name="${1:-}"
+if [ -z "$server_name" ] && [ -f "$DATA/server-name" ]; then read -r server_name < "$DATA/server-name"; fi
+[[ "$server_name" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$ && ${#server_name} -le 253 ]] || { echo 'Usage: sudo bash vpn/setup_openvpn.sh <canonical-vpn-hostname>' >&2; exit 2; }
+
+apt-get install -y -q openvpn openssl netcat-openbsd iptables gawk util-linux >/dev/null
+
+# Keys: a CA and the server certificate. Routers log in with a username and password, no client cert.
+bash "$HERE/issue_server_certificate.sh" "$PKI/pki" "$server_name"
+# MikroTik RouterOS 6 needs classic Diffie Hellman. Keep existing parameters.
+if [ ! -s "$PKI/pki/dh.pem" ]; then openssl dhparam -out "$PKI/pki/dh.pem" 2048; fi
+
+# Logins and fixed IPs under /var/lib: the sites' PHP-FPM runs with /etc read-only (ProtectSystem).
 # Preserve the live network on upgrade. Never silently renumber installed clients.
 if [ ! -f "$DATA/network" ]; then
     prefix=10.253
@@ -51,6 +47,8 @@ install -m 600 "$PKI/pki/ca.crt" "$DIR/smartolt-ca.crt"
 install -m 600 "$PKI/pki/issued/server.crt" "$DIR/smartolt-server.crt"
 install -m 600 "$PKI/pki/private/server.key" "$DIR/smartolt-server.key"
 install -m 600 "$PKI/pki/dh.pem" "$DIR/smartolt-dh.pem"
+install -m 600 "$PKI/pki/ca.crt" "$DATA/ca.crt"
+printf '%s\n' "$server_name" > "$DATA/server-name"
 touch "$DATA/users"
 chmod 600 "$DATA/users"
 

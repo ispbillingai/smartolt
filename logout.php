@@ -6,7 +6,7 @@ session_set_cookie_params([
     'lifetime' => $session_lifetime,
     'path' => '/',
     'domain' => '',
-    'secure' => true,
+    'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
     'httponly' => true,
     'samesite' => 'Strict'
 ]);

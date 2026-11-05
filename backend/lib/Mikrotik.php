@@ -4,8 +4,19 @@ final class Mikrotik
 {
     public const SNMP_NAT_PORT = 2161;
 
-    public static function script(array $olt, string $server, string $password): string
+    public static function script(array $olt, string $server, string $password, string $caPem): string
     {
+        $ca = @openssl_x509_read($caPem);
+        $details = $ca ? openssl_x509_parse($ca) : false;
+        if (!$ca || !$details || !str_contains($details['extensions']['basicConstraints'] ?? '', 'CA:TRUE')
+            || ($details['validTo_time_t'] ?? 0) <= time() || ($details['validFrom_time_t'] ?? PHP_INT_MAX) > time()) {
+            throw new RuntimeException('The VPN trust certificate is missing, invalid or expired. Run the VPN server setup first.');
+        }
+        openssl_x509_export($ca, $caPem);
+        if (strlen($caPem) > 4096) throw new RuntimeException('The VPN CA is too large for RouterOS 6 inline import.');
+        $fingerprint = openssl_x509_fingerprint($ca, 'sha256');
+        $caFile = 'smartolt-ca-' . substr($fingerprint, 0, 12);
+        $pemLiteral = '"' . str_replace("\n", '\\r\\n', str_replace("\r", '', $caPem)) . '"';
         foreach (['vpn_ip', 'lan_ip'] as $field) {
             if (!filter_var($olt[$field] ?? '', FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                 throw new InvalidArgumentException('The VPN and OLT addresses must be valid IPv4 addresses.');
@@ -19,7 +30,7 @@ final class Mikrotik
         $source = $prefix[0] . '.' . $prefix[1] . '.0.1';
         $tag = 'comment=' . self::quote($if);
         $common = 'name=' . $if . ' connect-to=' . self::quote($server) . ' port=1194 user=' . self::quote($olt['vpn_user'])
-            . ' password=' . self::quote($password) . ' mode=ip auth=sha1 add-default-route=no use-peer-dns=no disabled=no comment='
+            . ' password=' . self::quote($password) . ' mode=ip auth=sha1 verify-server-certificate=yes tls-version=only-1.2 add-default-route=no use-peer-dns=no disabled=no comment='
             . self::quote('SmartOLT ' . $olt['name']);
         $client = '/interface ovpn-client add ' . $common;
         $route7 = ':if ([:len [/routing table find name=' . self::quote($if) . ']] = 0) do={ /routing table add name=' . $if . ' fib }; /ip route add dst-address=' . $source . '/32 gateway=' . $if . ' routing-table=' . $if . ' ' . $tag;
@@ -29,6 +40,17 @@ final class Mikrotik
             ':local version [/system resource get version]',
             ':local major [:tonum [:pick $version 0 [:find $version "."]]]',
             ':if (($major != 6) && ($major != 7)) do={ :error "SmartOLT requires RouterOS 6 or 7" }',
+            // The authenticated panel supplies this exact public CA. No unverified fetch is used.
+            ':if ([:len [/certificate find fingerprint=' . self::quote($fingerprint) . ']] = 0) do={',
+            '  /file print file=' . self::quote($caFile),
+            '  :delay 1s',
+            '  /file set [find name=' . self::quote($caFile . '.txt') . '] contents=' . $pemLiteral,
+            '  /certificate import file-name=' . self::quote($caFile . '.txt') . ' passphrase=""',
+            '  /file remove [find name=' . self::quote($caFile . '.txt') . ']',
+            '}',
+            ':local ca [/certificate find fingerprint=' . self::quote($fingerprint) . ']',
+            ':if ([:len $ca] = 0) do={ :error "SmartOLT CA import failed; VPN was not changed" }',
+            '/certificate set $ca trusted=yes',
             '/interface ovpn-client remove [find name=' . self::quote($if) . ']',
             // Parse only the selected branch so RouterOS 6 never parses v7-only syntax/enums.
             ':if ($major = 7) do={ :local install [:parse ' . self::quote($client . ' cipher=aes256-cbc') . ']; $install } else={ :local install [:parse ' . self::quote($client . ' cipher=aes256') . ']; $install }',
@@ -65,7 +87,9 @@ final class Mikrotik
     private static function first(string $table, string $rule): string
     {
         $path = '/ip firewall ' . $table;
-        return ':if ([:len [' . $path . ' find]] > 0) do={ ' . $path . ' add ' . $rule . ' place-before=0 } else={ ' . $path . ' add ' . $rule . ' }';
+        // Console row numbers can still point at a removed rule during script reapplication.
+        // The internal ID returned by find is stable and works without a preceding print.
+        return ':if ([:len [' . $path . ' find]] > 0) do={ ' . $path . ' add ' . $rule . ' place-before=[:pick [' . $path . ' find] 0] } else={ ' . $path . ' add ' . $rule . ' }';
     }
 
     private static function port($value): int

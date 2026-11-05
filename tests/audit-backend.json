@@ -1,0 +1,2868 @@
+{
+  "generated_at": "2026-11-05",
+  "scope": "Static function inventory plus concrete protocol and storage regression evidence. This is not hardware certification or an assertion that every branch ran.",
+  "files": [
+    "backend/lib/Huawei.php",
+    "backend/lib/Telnet.php",
+    "backend/lib/SnmpClient.php",
+    "backend/lib/SnmpRates.php",
+    "backend/lib/OltManager.php"
+  ],
+  "method_count": 220,
+  "regression_suites": [
+    "tests/driver_integrity_test.php",
+    "tests/backend_integrity_test.php",
+    "tests/telnet_test.php",
+    "tests/snmp_test.php",
+    "tests/snmp_rates_test.php",
+    "tests/api_test.php",
+    "tests/web_test.sh"
+  ],
+  "primary_source_provenance": [
+    {
+      "title": "Huawei EchoLife Service Manual: Maintenance and Troubleshooting on the OLT CLI",
+      "author": "Huawei Technologies Co., Ltd.",
+      "mirror_url": "https://manuals.plus/m/6b2566765118f8f80618802b9fc965caeaf610800228a8f823b68e1c7dca7881",
+      "used_for": "display statistics ont-eth and exact Up/Down traffic/Received/Sent right bytes field names"
+    },
+    {
+      "title": "Huawei SmartAX MA5600T/MA5603T/MA5608T V800R016C10 Feature Guide",
+      "author": "Huawei Technologies Co., Ltd.",
+      "mirror_url": "https://old.mtk.com.ua/files/eCatalog/Huawei/MA5600T%26MA5603T%26MA5608T%20V800R016C10%20Feature%20Guide%2002.pdf",
+      "used_for": "display mac-address service-port and table columns; indexed snippets used because full PDF exceeded web retrieval limit"
+    },
+    {
+      "title": "RFC 3416",
+      "url": "https://www.rfc-editor.org/rfc/rfc3416.html"
+    },
+    {
+      "title": "RFC 2863",
+      "url": "https://www.rfc-editor.org/rfc/rfc2863.html"
+    }
+  ],
+  "remaining_boundaries": [
+    "No physical OLT or MikroTik was accessed; separate local RouterOS CHR execution is recorded in audit-results.json.",
+    "Per-ONU Ethernet port monitoring does not equal total subscriber usage.",
+    "WAN, WiFi, CATV and VoIP need compatible provisioning/ACS integration.",
+    "Multiple-service ONU edits intentionally fail before deleting other services.",
+    "A transport failure during a multi-step hardware change can require manual reconciliation; rollback errors are explicit."
+  ],
+  "methods": [
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 15,
+      "class": "Huawei",
+      "method": "inventoryComplete",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 17,
+      "class": "Huawei",
+      "method": "__construct",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 22,
+      "class": "Huawei",
+      "method": "connect",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 43,
+      "class": "Huawei",
+      "method": "transcript",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 48,
+      "class": "Huawei",
+      "method": "close",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 54,
+      "class": "Huawei",
+      "method": "raw",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 67,
+      "class": "Huawei",
+      "method": "confirm",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 83,
+      "class": "Huawei",
+      "method": "enterPort",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 90,
+      "class": "Huawei",
+      "method": "leavePort",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 100,
+      "class": "Huawei",
+      "method": "info",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 120,
+      "class": "Huawei",
+      "method": "temperature",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 135,
+      "class": "Huawei",
+      "method": "saveConfig",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 142,
+      "class": "Huawei",
+      "method": "ontVersion",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 152,
+      "class": "Huawei",
+      "method": "restoreDefaults",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 160,
+      "class": "Huawei",
+      "method": "addVlan",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 175,
+      "class": "Huawei",
+      "method": "deleteVlan",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 182,
+      "class": "Huawei",
+      "method": "vlans",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Read and verify complete VLAN list for mutation postconditions.",
+      "limitation": "Unknown firmware output fails explicitly.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 194,
+      "class": "Huawei",
+      "method": "runningConfig",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 227,
+      "class": "Huawei",
+      "method": "displayCommand",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 239,
+      "class": "Huawei",
+      "method": "diag",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 263,
+      "class": "Huawei",
+      "method": "portSummary",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 274,
+      "class": "Huawei",
+      "method": "servicePorts",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 281,
+      "class": "Huawei",
+      "method": "trafficTables",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 290,
+      "class": "Huawei",
+      "method": "createTrafficTable",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Read back requested CIR and PIR before caching the speed table.",
+      "limitation": "An unrecognized firmware output fails instead of claiming the speed limit was applied.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 298,
+      "class": "Huawei",
+      "method": "autofind",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Accept only precise singular/plural empty-discovery messages or a complete reported count matching all discovered blocks. Reject unknown and truncated output before cache replacement.",
+      "limitation": "Firmware without a recognized complete discovery total is refused explicitly.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 314,
+      "class": "Huawei",
+      "method": "onts",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Compare parsed ONU count with the device totals and expose inventoryComplete. Recognized zero inventory is complete.",
+      "limitation": "Firmware without recognized inventory totals is refused by refresh; no silent partial success.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 334,
+      "class": "Huawei",
+      "method": "portOptical",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 341,
+      "class": "Huawei",
+      "method": "ontOptical",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 350,
+      "class": "Huawei",
+      "method": "ontDetail",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 360,
+      "class": "Huawei",
+      "method": "ontEthernetStats",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Read selected ONU Ethernet port counters and device-reported upstream/downstream kbps.",
+      "limitation": "Not whole-ONU traffic, GPON aggregate, monthly usage or billing. Missing fields remain null.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 369,
+      "class": "Huawei",
+      "method": "parseEthernetStats",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Keep byte counts exact as decimal strings; retain null for unknown metrics.",
+      "limitation": "No guessed rates from packet counts.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 384,
+      "class": "Huawei",
+      "method": "macAddresses",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Read each service-port MAC table; reject partial tables with mismatched counts.",
+      "limitation": "Only documented table layouts recognized; unsupported firmware produces an error.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 395,
+      "class": "Huawei",
+      "method": "parseMacAddresses",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 410,
+      "class": "Huawei",
+      "method": "checkedServicePorts",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 424,
+      "class": "Huawei",
+      "method": "servicesFor",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 431,
+      "class": "Huawei",
+      "method": "configCommands",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Join recognized wrapped service-port arguments before recovery.",
+      "limitation": "Unknown command variants are not inferred.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 444,
+      "class": "Huawei",
+      "method": "verifyServices",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Compare restored service count, indices, VLAN, GEM and speed table IDs.",
+      "limitation": "No recovery guarantee after a broken connection.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 461,
+      "class": "Huawei",
+      "method": "authorize",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Verify returned ONT ID belongs to requested serial before service creation/cleanup; service failure removes only the verified newly created ONU.",
+      "limitation": "Transport loss can make rollback impossible; the error explicitly requires device inspection.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 490,
+      "class": "Huawei",
+      "method": "addService",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 514,
+      "class": "Huawei",
+      "method": "setService",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Reject multiple services; capture wrapped service configuration; verify replacement VLAN/GEM/traffic tables and ETH1 native VLAN; verify restored services after failure.",
+      "limitation": "Bridge intent configures ETH1 native VLAN only. Router WAN/ACS configuration is not implemented by this method.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 552,
+      "class": "Huawei",
+      "method": "setActive",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 562,
+      "class": "Huawei",
+      "method": "replaceSn",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 571,
+      "class": "Huawei",
+      "method": "reboot",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 579,
+      "class": "Huawei",
+      "method": "delete",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Capture removed service commands, remove services before ONT, verify ONT absence, recover services if deletion fails.",
+      "limitation": "A broken transport can prevent recovery; no physical rollback guarantee is claimed.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php",
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 609,
+      "class": "Huawei",
+      "method": "setDescription",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 620,
+      "class": "Huawei",
+      "method": "stripEcho",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 633,
+      "class": "Huawei",
+      "method": "findError",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 641,
+      "class": "Huawei",
+      "method": "parseVersion",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 649,
+      "class": "Huawei",
+      "method": "parseUptime",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 656,
+      "class": "Huawei",
+      "method": "parseBoards",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 671,
+      "class": "Huawei",
+      "method": "parseProfiles",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 681,
+      "class": "Huawei",
+      "method": "parseVlans",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 691,
+      "class": "Huawei",
+      "method": "parseAutofind",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 719,
+      "class": "Huawei",
+      "method": "parseOntInfo",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 745,
+      "class": "Huawei",
+      "method": "parseOptical",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 760,
+      "class": "Huawei",
+      "method": "parseOpticalTable",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 779,
+      "class": "Huawei",
+      "method": "parseSummary",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 812,
+      "class": "Huawei",
+      "method": "summaryTime",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 825,
+      "class": "Huawei",
+      "method": "parseServicePortTable",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 841,
+      "class": "Huawei",
+      "method": "parseTrafficTables",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 855,
+      "class": "Huawei",
+      "method": "downCategory",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 864,
+      "class": "Huawei",
+      "method": "controlFlag",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 870,
+      "class": "Huawei",
+      "method": "parseOntAdd",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 875,
+      "class": "Huawei",
+      "method": "parseServicePorts",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 882,
+      "class": "Huawei",
+      "method": "parseKeyValues",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Huawei.php",
+      "line": 893,
+      "class": "Huawei",
+      "method": "normaliseSn",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 23,
+      "class": "Telnet",
+      "method": "__construct",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 38,
+      "class": "Telnet",
+      "method": "__destruct",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 43,
+      "class": "Telnet",
+      "method": "close",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 53,
+      "class": "Telnet",
+      "method": "transcript",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 59,
+      "class": "Telnet",
+      "method": "withoutTranscript",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Configuration/diagnostic reads can return requested configuration without saving embedded credentials to action logs; resume transcript state even on error.",
+      "limitation": "Sensitive raw display outputs outside known current-configuration commands remain the caller responsibility.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 67,
+      "class": "Telnet",
+      "method": "write",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Handle partial socket writes and suppress explicit secret writes from transcript.",
+      "limitation": "Any secrets included in command output require caller transcript suppression.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 87,
+      "class": "Telnet",
+      "method": "readUntil",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 118,
+      "class": "Telnet",
+      "method": "fill",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Preserve fragmented IAC/option/subnegotiation frames across TCP reads.",
+      "limitation": "No SSH transport.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/Telnet.php",
+      "line": 167,
+      "class": "Telnet",
+      "method": "clean",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 15,
+      "class": "SnmpClient",
+      "method": "__construct",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 31,
+      "class": "SnmpClient",
+      "method": "get",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/snmp_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 46,
+      "class": "SnmpClient",
+      "method": "walk",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/snmp_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 72,
+      "class": "SnmpClient",
+      "method": "systemInfo",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/snmp_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 88,
+      "class": "SnmpClient",
+      "method": "interfaces",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Enumerate Ethernet IF-MIB interfaces and exact HC counters with 32-bit fallback; bound table size and scan duration.",
+      "limitation": "Not vendor-specific PON optical or per-ONU MIB support.",
+      "direct_test_references": [
+        "tests/snmp_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 123,
+      "class": "SnmpClient",
+      "method": "displayString",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 129,
+      "class": "SnmpClient",
+      "method": "request",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Validate BER, SNMP version, community, request correlation and UDP source; enforce retry/time budgets.",
+      "limitation": "Read-only v2c. No SNMPv3, SET or traps.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 165,
+      "class": "SnmpClient",
+      "method": "tlv",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 174,
+      "class": "SnmpClient",
+      "method": "integer",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 182,
+      "class": "SnmpClient",
+      "method": "normaliseOid",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 192,
+      "class": "SnmpClient",
+      "method": "encodeOid",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 206,
+      "class": "SnmpClient",
+      "method": "readTlv",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 221,
+      "class": "SnmpClient",
+      "method": "unsigned",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 237,
+      "class": "SnmpClient",
+      "method": "decodeValue",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 267,
+      "class": "SnmpClient",
+      "method": "decodeResponse",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpClient.php",
+      "line": 290,
+      "class": "SnmpClient",
+      "method": "compareOid",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/SnmpRates.php",
+      "line": 5,
+      "class": "SnmpRates",
+      "method": "calculate",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "protocol state, parsing, bounds and error propagation",
+      "postcondition": "Exact decimal counter delta; gaps on reset, discontinuity, interface reuse, ambiguous wrap or invalid interval.",
+      "limitation": "Rates are interval averages, not instantaneous measurements.",
+      "direct_test_references": [
+        "tests/snmp_rates_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 33,
+      "class": "OltManager",
+      "method": "__construct",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 43,
+      "class": "OltManager",
+      "method": "db",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/acs_test.php",
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php",
+        "tests/dashboard_test.php",
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 48,
+      "class": "OltManager",
+      "method": "now",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/acs_test.php",
+        "tests/backend_integrity_test.php",
+        "tests/dashboard_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 55,
+      "class": "OltManager",
+      "method": "encrypt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 64,
+      "class": "OltManager",
+      "method": "decrypt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/acs_test.php",
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 78,
+      "class": "OltManager",
+      "method": "olts",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php",
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 85,
+      "class": "OltManager",
+      "method": "olt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 99,
+      "class": "OltManager",
+      "method": "onu",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 107,
+      "class": "OltManager",
+      "method": "publicOlt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 120,
+      "class": "OltManager",
+      "method": "statusWhere",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 140,
+      "class": "OltManager",
+      "method": "listOnus",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 185,
+      "class": "OltManager",
+      "method": "counts",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 216,
+      "class": "OltManager",
+      "method": "knownSerials",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 226,
+      "class": "OltManager",
+      "method": "waiting",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 238,
+      "class": "OltManager",
+      "method": "ports",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 256,
+      "class": "OltManager",
+      "method": "saveOlt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 320,
+      "class": "OltManager",
+      "method": "deleteOlt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Take device lock without requiring a connection; revoke VPN; transactionally remove dependent ONU notes, scoped authorization queues/rules and PON samples; detach support tickets.",
+      "limitation": "VPN revocation and SQL are separate systems; a later SQL failure leaves the row for retry but VPN may already be revoked.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 351,
+      "class": "OltManager",
+      "method": "removeOnuRows",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Within caller transaction, remove ONU notes, detach retained support tickets and delete ONUs; FK-backed history/ACS associations follow schema actions.",
+      "limitation": "Historical notes are removed with deleted ONUs; support tickets remain.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 368,
+      "class": "OltManager",
+      "method": "vpnHelper",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 380,
+      "class": "OltManager",
+      "method": "vpnUsername",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 389,
+      "class": "OltManager",
+      "method": "vpnEnsure",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 401,
+      "class": "OltManager",
+      "method": "vpnRemove",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 407,
+      "class": "OltManager",
+      "method": "vpnStatus",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 419,
+      "class": "OltManager",
+      "method": "vpnServer",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 425,
+      "class": "OltManager",
+      "method": "vpnTrust",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 440,
+      "class": "OltManager",
+      "method": "mikrotikScript",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 451,
+      "class": "OltManager",
+      "method": "withOltLock",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 466,
+      "class": "OltManager",
+      "method": "withOlt",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 497,
+      "class": "OltManager",
+      "method": "act",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 509,
+      "class": "OltManager",
+      "method": "log",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 518,
+      "class": "OltManager",
+      "method": "pollSnmp",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 561,
+      "class": "OltManager",
+      "method": "snmpHistory",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/storage_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 569,
+      "class": "OltManager",
+      "method": "readConfigBackup",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 589,
+      "class": "OltManager",
+      "method": "refresh",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Read and atomically persist one complete snapshot while the OLT advisory lock remains held. Preserve desired service configuration.",
+      "limitation": "Live firmware not tested. An unrecognized inventory count preserves the previous snapshot and reports failure.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 650,
+      "class": "OltManager",
+      "method": "persistRefresh",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Commit device/ONU/cache/history changes in one SQL transaction; remove missing ONUs only for complete inventories; serial replacement creates a new customer record instead of inheriting unrelated metadata.",
+      "limitation": "Database write failure rolls back snapshot; external moves/replacements may require reassociating customer metadata deliberately.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 794,
+      "class": "OltManager",
+      "method": "prune",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 807,
+      "class": "OltManager",
+      "method": "cleanDesc",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 814,
+      "class": "OltManager",
+      "method": "metaFromInput",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 846,
+      "class": "OltManager",
+      "method": "saveMetaRow",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 853,
+      "class": "OltManager",
+      "method": "speedProfile",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 864,
+      "class": "OltManager",
+      "method": "trafficIndex",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 889,
+      "class": "OltManager",
+      "method": "speedTables",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 896,
+      "class": "OltManager",
+      "method": "typeForModel",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 907,
+      "class": "OltManager",
+      "method": "authorize",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Keep device lock through SQL commit; database failure compensates by deleting the newly authorized ONT.",
+      "limitation": "No distributed transaction with hardware. Failure can require manual reconciliation if transport breaks.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 963,
+      "class": "OltManager",
+      "method": "autofind",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 974,
+      "class": "OltManager",
+      "method": "onuAndOlt",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 981,
+      "class": "OltManager",
+      "method": "onuEthernetStats",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Verify serial before reading selected Ethernet port with sample timestamp under OLT lock.",
+      "limitation": "Firmware/ONU support is checked by command result, not guessed from type name.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 991,
+      "class": "OltManager",
+      "method": "onuMacAddresses",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Verify serial before locked read of client MACs for an ONU.",
+      "limitation": "Read-only; no MAC clear/write operations.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1001,
+      "class": "OltManager",
+      "method": "assertOnuIdentity",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Before mutation, compare physical ONT serial at its position to the stored identity.",
+      "limitation": "Cached positions can be reused; mismatch requires refresh.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1008,
+      "class": "OltManager",
+      "method": "liveOnu",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Verify physical serial, then persist run/control/config/match state, optical readings, timestamps and distance atomically under OLT lock.",
+      "limitation": "No vendor ACS/WiFi state is inferred.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1036,
+      "class": "OltManager",
+      "method": "reboot",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1045,
+      "class": "OltManager",
+      "method": "deleteOnu",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1060,
+      "class": "OltManager",
+      "method": "describe",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Validate metadata before hardware change; commit description and metadata together; restore previous device name if local storage fails.",
+      "limitation": "Transport loss can prevent compensation and is reported explicitly.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1093,
+      "class": "OltManager",
+      "method": "saveMeta",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1101,
+      "class": "OltManager",
+      "method": "setService",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Preserve omitted speed/VLAN fields, reject unsupported routing-mode transitions before mutation, verify physical serial and driver readback, save desired and observed values under lock.",
+      "limitation": "Database failure after device mutation is explicit and requires refresh/reconcile. No router WAN configuration.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1127,
+      "class": "OltManager",
+      "method": "setActive",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1146,
+      "class": "OltManager",
+      "method": "replaceSn",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/driver_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1169,
+      "class": "OltManager",
+      "method": "bulk",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Every requested distinct ID receives exactly one result. One locked session per OLT reuses the checked single-ONU workflows.",
+      "limitation": "Large batches remain subject to HTTP time limits; partial failures are reported individually.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1210,
+      "class": "OltManager",
+      "method": "signalHistory",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1217,
+      "class": "OltManager",
+      "method": "statusEvents",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1225,
+      "class": "OltManager",
+      "method": "networkStatus",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1241,
+      "class": "OltManager",
+      "method": "recentEvents",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1249,
+      "class": "OltManager",
+      "method": "zones",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1254,
+      "class": "OltManager",
+      "method": "odbs",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1260,
+      "class": "OltManager",
+      "method": "onuTypes",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1265,
+      "class": "OltManager",
+      "method": "speedProfiles",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1270,
+      "class": "OltManager",
+      "method": "cleanName",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1277,
+      "class": "OltManager",
+      "method": "saveRow",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1300,
+      "class": "OltManager",
+      "method": "saveZone",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1308,
+      "class": "OltManager",
+      "method": "saveOdb",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1321,
+      "class": "OltManager",
+      "method": "saveOnuType",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1334,
+      "class": "OltManager",
+      "method": "saveSpeedProfile",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1346,
+      "class": "OltManager",
+      "method": "deleteCatalog",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Use one transaction; deleting a type removes its scoped automatic rules; deleting a preset with queued dependents is refused before any change.",
+      "limitation": "Catalogue operations do not alter existing device configuration.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1389,
+      "class": "OltManager",
+      "method": "deleteUnused",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1413,
+      "class": "OltManager",
+      "method": "sectors",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1419,
+      "class": "OltManager",
+      "method": "saveSector",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1429,
+      "class": "OltManager",
+      "method": "presets",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1436,
+      "class": "OltManager",
+      "method": "preset",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1443,
+      "class": "OltManager",
+      "method": "savePreset",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1468,
+      "class": "OltManager",
+      "method": "defaultProfiles",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1479,
+      "class": "OltManager",
+      "method": "presetInput",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1499,
+      "class": "OltManager",
+      "method": "autoActionsOn",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1504,
+      "class": "OltManager",
+      "method": "setAutoActionsOn",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1509,
+      "class": "OltManager",
+      "method": "autoActions",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1515,
+      "class": "OltManager",
+      "method": "saveAutoAction",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1529,
+      "class": "OltManager",
+      "method": "deleteAutoAction",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1536,
+      "class": "OltManager",
+      "method": "pendingOnus",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1544,
+      "class": "OltManager",
+      "method": "savePending",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1572,
+      "class": "OltManager",
+      "method": "deletePending",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1584,
+      "class": "OltManager",
+      "method": "runAuto",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1643,
+      "class": "OltManager",
+      "method": "saveConfig",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/telnet_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1653,
+      "class": "OltManager",
+      "method": "diag",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1663,
+      "class": "OltManager",
+      "method": "cli",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1673,
+      "class": "OltManager",
+      "method": "runningConfig",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1681,
+      "class": "OltManager",
+      "method": "swInfo",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1689,
+      "class": "OltManager",
+      "method": "restoreDefaults",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1699,
+      "class": "OltManager",
+      "method": "setVlan",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Hold device lock through dependency check, verified VLAN mutation and actual VLAN-list cache persistence.",
+      "limitation": "A database failure after device mutation is explicit and requires refresh.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1722,
+      "class": "OltManager",
+      "method": "resync",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1734,
+      "class": "OltManager",
+      "method": "openEvent",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1750,
+      "class": "OltManager",
+      "method": "resolveEvent",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1756,
+      "class": "OltManager",
+      "method": "checkEvents",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1787,
+      "class": "OltManager",
+      "method": "events",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1806,
+      "class": "OltManager",
+      "method": "eventCounts",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1818,
+      "class": "OltManager",
+      "method": "muteEvent",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1830,
+      "class": "OltManager",
+      "method": "notes",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1837,
+      "class": "OltManager",
+      "method": "addNote",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1848,
+      "class": "OltManager",
+      "method": "tickets",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1860,
+      "class": "OltManager",
+      "method": "saveTicket",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php",
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1875,
+      "class": "OltManager",
+      "method": "closeTicket",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/backend_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1884,
+      "class": "OltManager",
+      "method": "authorizationsPerDay",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1901,
+      "class": "OltManager",
+      "method": "speedText",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1908,
+      "class": "OltManager",
+      "method": "mismatches",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1938,
+      "class": "OltManager",
+      "method": "ponOccupancy",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 1981,
+      "class": "OltManager",
+      "method": "onuSplitterCheck",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2002,
+      "class": "OltManager",
+      "method": "metres",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2010,
+      "class": "OltManager",
+      "method": "autoSyncOn",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2015,
+      "class": "OltManager",
+      "method": "setAutoSync",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2021,
+      "class": "OltManager",
+      "method": "runAutoSync",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2039,
+      "class": "OltManager",
+      "method": "splitterCheck",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2067,
+      "class": "OltManager",
+      "method": "statusChanges",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2078,
+      "class": "OltManager",
+      "method": "rangeWhere",
+      "visibility": "private",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2097,
+      "class": "OltManager",
+      "method": "actionsFiltered",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": [
+        "tests/catalog_integrity_test.php"
+      ]
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2116,
+      "class": "OltManager",
+      "method": "actionUsers",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2126,
+      "class": "OltManager",
+      "method": "outages",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2146,
+      "class": "OltManager",
+      "method": "ponHistory",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2157,
+      "class": "OltManager",
+      "method": "importOnus",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2200,
+      "class": "OltManager",
+      "method": "actions",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    },
+    {
+      "file": "backend/lib/OltManager.php",
+      "line": 2207,
+      "class": "OltManager",
+      "method": "apiToken",
+      "visibility": "public",
+      "static_review": "reviewed",
+      "review_area": "persistence, parameters, locking and workflow contracts",
+      "postcondition": "Contract and callers statically inspected; direct test references below are not a claim of complete branch coverage.",
+      "limitation": "Real device/firmware behavior is not proven by local fixtures.",
+      "direct_test_references": []
+    }
+  ]
+}

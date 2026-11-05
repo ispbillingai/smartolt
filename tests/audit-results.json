@@ -1,0 +1,663 @@
+{
+  "date": "2026-11-05",
+  "scope": "Local simulations and actual XAMPP browser execution. No production device or deployment accessed.",
+  "interpretation": "Each suite has its own evidence; focused runs supersede older checks after fixes. This is not one clean all-suite run, exhaustive branch coverage, or proof that every inventoried control was individually exercised.",
+  "suites": [
+    {
+      "name": "api",
+      "passed": 54,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/api-results.txt"
+    },
+    {
+      "name": "api-access",
+      "passed": 13,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/api-access-results.txt"
+    },
+    {
+      "name": "web",
+      "passed": 173,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/web-results.txt"
+    },
+    {
+      "name": "session",
+      "passed": 6,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/session-results.txt"
+    },
+    {
+      "name": "acs",
+      "passed": 47,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/acs-results.txt"
+    },
+    {
+      "name": "dashboard",
+      "passed": 5,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/dashboard-results.txt"
+    },
+    {
+      "name": "driver",
+      "passed": 49,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/driver_integrity-results.txt"
+    },
+    {
+      "name": "backend-integrity",
+      "passed": 30,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/backend-integrity-results.txt"
+    },
+    {
+      "name": "snmp",
+      "passed": 18,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/snmp-results.txt"
+    },
+    {
+      "name": "snmp-rates",
+      "passed": 10,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/snmp_rates-results.txt"
+    },
+    {
+      "name": "telnet",
+      "passed": 11,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/telnet-results.txt"
+    },
+    {
+      "name": "timezone",
+      "passed": 8,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/time-results.txt"
+    },
+    {
+      "name": "mikrotik-generation",
+      "passed": 22,
+      "log": ".test-runtime/routeros-7f6e0a88a23545d887282773ff61e858/vpn-unit-final.txt"
+    },
+    {
+      "name": "vpn-helpers",
+      "passed": 12,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/vpn-shell-results.txt"
+    },
+    {
+      "name": "vpn-certificates",
+      "passed": 7,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/vpn-certificates-results.txt"
+    },
+    {
+      "name": "installer",
+      "passed": 7,
+      "log": ".test-runtime/local-7bbe5f4885db4181bbecda215bda3023/installer-results.txt"
+    },
+    {
+      "name": "storage",
+      "passed": 25,
+      "log": ".test-runtime/local-df8735b6888d4adf97441918f628f2eb/storage-results.txt"
+    },
+    {
+      "name": "catalogue-integrity",
+      "passed": 18,
+      "log": ".test-runtime/local-86ba687530ff4b5886501ad7d8f07e38/catalog_integrity-final-replay.log"
+    }
+  ],
+  "browser": {
+    "server": "XAMPP Apache + PHP 8.2.4",
+    "routes": 51,
+    "primary_passed": 99,
+    "primary_failed": 1,
+    "focused_passed": 1,
+    "distinct_behavior_scenarios": 47,
+    "layout_checks": 2,
+    "route_checks": 51,
+    "primary_failed_precondition": "No event existed in reused fixture. Final scenario creates an unreachable local OLT, checks both mute options/unmute, then cleans up.",
+    "javascript_errors": 0,
+    "primary_manifest": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json",
+    "focused_manifest": ".test-runtime/apache-components-398a68dcc02248179efc624143d71765/components/manifest.json",
+    "checks": [
+      {
+        "name": "login/reset controls reject wrong credentials and cancel returns to sign-in",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "authenticated login opens the dashboard",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: index.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: onus.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: onus.php?select=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: unconfigured.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: later.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: map.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: map.php?layer=odb",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: graphs.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: graphs.php?olt=1&range=168",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: events.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: events.php?tab=muted",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: events.php?tab=history",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: diag.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: tasks.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: auto_actions.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: tickets.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: tickets.php?add=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: settings.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: billing.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: help.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: info.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: catalog.php?k=zones",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: catalog.php?k=sectors",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: catalog.php?k=odbs",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: catalog.php?k=types",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: catalog.php?k=speeds",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: catalog.php?k=presets",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=auth",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=export",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=import",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=status",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=pon",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=splitters",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=mismatch",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=traffic",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: reports.php?r=wifi",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olts.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olts.php?add=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1&tab=cards",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1&tab=pon",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1&tab=uplink",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1&tab=vlans",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1&tab=profiles",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: olt.php?id=1&tab=cli",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: backups.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: vpn.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: onu.php?id=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: traffic.php?id=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: acs.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "inventory and JavaScript: acs.php?onu_id=1",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "shared dark and light palette is consistent across all inventoried pages",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "all inventoried pages fit a mobile viewport",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "every navigation dropdown opens and all menu links navigate",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "theme persists and mobile navigation opens",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "dashboard auto-refresh toggles and charts render",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "zones: modal create, edit, search, export, cancel/delete confirmation",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "sectors: modal create, edit, search, export, cancel/delete confirmation",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "odbs: modal create, edit, search, export, cancel/delete confirmation",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "types: modal create, edit, search, export, cancel/delete confirmation",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "speeds: modal create, edit, search, export, cancel/delete confirmation",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "presets: modal create, edit, search, export, cancel/delete confirmation",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "catalog CSV import updates visible rows and database",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "automatic authorization rule create, pause, resume and delete",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "configured search, advanced filter, bulk selection, disable and enable device",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ONU live status refresh and polling toggle",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ONU modals open and close; GPS populates real form fields",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ONU note persisted and device commands return actual output",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ONU service modal confirmation submits and device VLAN changes",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "later authorization preset/GPS controls and pending record",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "tickets create, close, reopen and filters",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "settings save and persist after reload",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "maps actually render and marker opens a popup",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "network graph renders and range/OLT selectors navigate",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "events search, mute one, muted tab and unmute",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-398a68dcc02248179efc624143d71765/components/manifest.json"
+      },
+      {
+        "name": "diagnostics search, status toggle, sort and filtered CSV",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "OLT refresh, save running configuration, edit and persisted fields",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "OLT SNMP test reports actual fixture interfaces and chart follows theme",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "VLAN create and delete reflect the device table",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "OLT diagnostics command returns hardware output and copy button works",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "backup schedule, capture, download, delete and OLT filter",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "Ethernet counters, live start-stop, retained chart samples, port selection and MAC CSV",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "real CSV download: reports.php?r=auth",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "real CSV download: reports.php?r=export",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "real CSV download: reports.php?r=status",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "real CSV download: reports.php?r=splitters",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "real CSV download: reports.php?r=traffic",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "real CSV download: olts.php",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "mismatch scan and automatic reconciliation switch",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "automatic authorization global start and stop persists",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "OLT add, direct connection fields, filter export and delete",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ONU CSV upload changes metadata and unknown serial reports a skipped row",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "pending authorization delete confirms and removes the queued serial",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ticket schedule follows the saved timezone and history date filters apply",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ONU delete, rediscovery, authorize, VIP, resync, restore, serial replacement and final deletion",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "settings password mismatch rejects then valid password changes and restores",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "ACS settings, test connection, device readings, refresh, WiFi and reboot queue",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      },
+      {
+        "name": "logout closes protected pages and login restores access",
+        "passed": true,
+        "evidence": ".test-runtime/apache-components-899561dd52ef4489a43cfe4e1b27de84/components/manifest.json"
+      }
+    ]
+  },
+  "apache_access": {
+    "passed": 18,
+    "evidence": ".test-runtime/apache-713ea2f1af73457096df1d643b04dde6",
+    "scope": "PHP executes and private root/nested paths are denied"
+  },
+  "openvpn": {
+    "passed": 3,
+    "evidence": ".test-runtime/openvpn-67537c004cc9433aba8f63c8fb609fd4",
+    "cases": [
+      "Trusted CA, canonical name and correct password connects",
+      "Wrong password rejected",
+      "Wrong hostname rejected"
+    ],
+    "scope": "Actual TLS/authentication with null devices; no kernel forwarding"
+  },
+  "syntax": {
+    "php_files": 71,
+    "php_versions": [
+      "CLI PHP 8.2.9",
+      "XAMPP PHP 8.2.4"
+    ],
+    "javascript_files": 5,
+    "shell_files": 10,
+    "powershell": "All test scripts parse",
+    "git_diff_check": "passed"
+  },
+  "limits": [
+    "Physical OLT/ONU firmware compatibility is unverified",
+    "No production VPN routing or physical MikroTik tested",
+    "ACS task acceptance/completion is simulated, not a real ONU applying WiFi settings",
+    "See TESTING.md for feature gaps and unimplemented operations"
+  ],
+  "routeros": {
+    "version": "7.25.1 CHR",
+    "passed": 35,
+    "exact_source_readbacks": 4,
+    "actual_imports": 4,
+    "configuration_assertions": 27,
+    "cases": [
+      "First import",
+      "Repeat import without duplicates",
+      "Two OLTs with exact special-character credentials",
+      "SNMP disabled removes only its forwarding rules and preserves the other OLT"
+    ],
+    "log": ".test-runtime/routeros-7f6e0a88a23545d887282773ff61e858/routeros-results.txt",
+    "reproduction": ".test-runtime/routeros-7f6e0a88a23545d887282773ff61e858/README.txt",
+    "cleanup": ".test-runtime/routeros-7f6e0a88a23545d887282773ff61e858/cleanup.txt",
+    "scope": "Actual RouterOS configuration execution in an isolated Hyper-V VM without a network adapter. Does not prove tunnel connectivity or packet forwarding.",
+    "fixed": "Firewall insertion now uses actual internal rule IDs instead of stale numeric console row0."
+  }
+}

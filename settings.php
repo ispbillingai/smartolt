@@ -7,15 +7,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = [];
     $display_name = trim($_POST['display_name'] ?? '');
     $company_name = trim($_POST['company_name'] ?? '');
-    $timezone = in_array($_POST['timezone'] ?? '', DateTimeZone::listIdentifiers(), true) ? $_POST['timezone'] : 'Africa/Nairobi';
-    $email_notifications = isset($_POST['email_notifications']) ? 1 : 0;
-    $theme = ($_POST['theme'] ?? 'light') === 'dark' ? 'dark' : 'light';
+    $timezone = (string)($_POST['timezone'] ?? '');
+    if (!in_array($timezone, DateTimeZone::listIdentifiers(), true)) $errors[] = 'Choose a valid time zone.';
     $new_password = $_POST['new_password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
 
     if ($display_name === '') {
         $errors[] = "Display Name is required.";
     }
+    if (mb_strlen($display_name) > 64) $errors[] = 'Display name must be 64 characters or fewer.';
+    if (mb_strlen($company_name) > 255) $errors[] = 'Company name must be 255 characters or fewer.';
     if ($new_password !== '') {
         if (strlen($new_password) < 8) {
             $errors[] = "New password must be at least 8 characters long.";
@@ -26,8 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
-        $db->prepare("UPDATE users SET timezone = ?, display_name = ?, company_name = ?, email_notifications = ?, theme = ? WHERE id = ?")
-            ->execute([$timezone, $display_name, $company_name, $email_notifications, $theme, $_SESSION['user_id']]);
+        $db->prepare("UPDATE users SET timezone = ?, display_name = ?, company_name = ? WHERE id = ?")
+            ->execute([$timezone, $display_name, $company_name, $_SESSION['user_id']]);
         if ($new_password !== '') {
             $db->prepare("UPDATE users SET password = ? WHERE id = ?")->execute([password_hash($new_password, PASSWORD_DEFAULT), $_SESSION['user_id']]);
         }
@@ -41,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stmt = $db->prepare("SELECT username, timezone, display_name, company_name, email_notifications, theme FROM users WHERE id = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
+if (isset($error)) $user = array_merge($user, ['display_name'=>$display_name,'company_name'=>$company_name,'timezone'=>$timezone]);
 
 
 $pageTitle = 'General';
@@ -53,9 +55,9 @@ include __DIR__ . '/backend/templates/header.php';
     <div class="so-panel-b">
         <?php echo csrf_field(); ?>
         <div class="so-grid2">
-            <div class="so-field"><label class="so-label" for="display_name">Display name</label><input type="text" name="display_name" id="display_name" value="<?php echo e($user['display_name'] ?? ''); ?>" class="so-input" required></div>
+            <div class="so-field"><label class="so-label" for="display_name">Display name</label><input type="text" name="display_name" id="display_name" maxlength="64" value="<?php echo e($user['display_name'] ?? ''); ?>" class="so-input" required></div>
             <div class="so-field"><label class="so-label" for="username">Username</label><input type="text" id="username" value="<?php echo e($user['username']); ?>" class="so-input" readonly style="opacity:.7"></div>
-            <div class="so-field"><label class="so-label" for="company_name">Company name</label><input type="text" name="company_name" id="company_name" value="<?php echo e($user['company_name'] ?? ''); ?>" class="so-input"></div>
+            <div class="so-field"><label class="so-label" for="company_name">Company name</label><input type="text" name="company_name" id="company_name" maxlength="255" value="<?php echo e($user['company_name'] ?? ''); ?>" class="so-input"></div>
             <div class="so-field"><label class="so-label" for="timezone">Time zone</label>
                 <select name="timezone" id="timezone" class="so-select">
                     <?php foreach (DateTimeZone::listIdentifiers() as $tz): ?><option value="<?php echo e($tz); ?>" <?php echo $tz === ($user['timezone'] ?? 'Africa/Nairobi') ? 'selected' : ''; ?>><?php echo e($tz); ?></option><?php endforeach; ?>

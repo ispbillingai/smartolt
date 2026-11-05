@@ -48,7 +48,7 @@ include __DIR__ . '/backend/templates/header.php';
             <td><?php echo e($a['olt_name'] !== null ? $a['olt_name'] : ''); ?></td>
             <td class="so-mono" style="font-size:13px"><?php echo strpos($a['action'], 'onu.') === 0 ? e($a['target']) : ''; ?></td>
             <td><?php echo e($who($a)); ?></td><td><?php echo e($a['ip']); ?></td>
-            <td style="white-space:nowrap"><?php echo e(date('d-M-Y H:i', strtotime($a['created_at']))); ?></td></tr>
+            <td style="white-space:nowrap"><?php echo e(AppTime::format('d-M-Y H:i', $a['created_at'])); ?></td></tr>
     <?php endforeach; ?>
     </tbody>
 </table></div>

@@ -21,6 +21,7 @@ $state = [
     ],
     // traffic table index => kbps (0 to 6 are the OLT's own defaults)
     'tt' => [0 => 1024, 6 => 1024000],
+    'vlans' => [1=>true,100=>true],
     'autofind' => [
         ['1/0', '485754434D2F5A9A', 'HWTC', 'EG8145V5'],
         ['1/2', '5A544547C0FFEE01', 'ZTEG', 'F660'],
@@ -147,10 +148,9 @@ while (true) {
                 . "  -----------------------------------------------------------------------------\n  Total: 2\n";
         } elseif ($cmd === 'display vlan all') {
             $out = "  VLAN   Type      Attribute     STND-Port NUM  SERVICE-Port NUM  VLAN-Con NUM\n"
-                . "  --------------------------------------------------------------------------\n"
-                . "     1   smart     common             1               0              -\n"
-                . "   100   smart     common             2               3              -\n"
-                . "  --------------------------------------------------------------------------\n  Total: 2\n";
+                . "  --------------------------------------------------------------------------\n";
+            foreach($state['vlans'] as $vlan=>$_) $out .= " {$vlan} smart common 1 0 -\n";
+            $out .= "  --------------------------------------------------------------------------\n  Total: ".count($state['vlans'])."\n";
         } elseif ($cmd === 'display ont autofind all') {
             if (!$state['autofind']) {
                 $out = "  Failure: The automatically found ONTs do not exist\n";
@@ -225,7 +225,12 @@ while (true) {
                 $state['autofind'] = array_values(array_filter($state['autofind'], function ($a) use ($m) { return $a[1] !== $m[2]; }));
                 $out = "  Number of ONTs that can be added: 1, success: 1\n  PortID :{$m[1]}, ONTID :{$id}\n";
             }
-        } elseif (preg_match('/^ont port native-vlan (\d+) (\d+) eth 1 vlan (\d+) priority 0$/', $cmd) && is_numeric($mode)) {
+        } elseif (preg_match('/^ont port native-vlan (\d+) (\d+) eth 1 vlan (\d+) priority 0$/', $cmd, $m) && is_numeric($mode)) {
+            $state['native']["{$mode}/{$m[1]}/{$m[2]}"] = (int)$m[3];
+        } elseif (preg_match('/^service-port (\d+) (vlan .*?)$/', $cmd, $restore) && $mode === 'config') {
+            if (preg_match('/^vlan (\d+) gpon 0\/(\d+)\/(\d+) ont (\d+) gemport (\d+) multi-service user-vlan \d+ tag-transform translate(?: inbound traffic-table index (\d+) outbound traffic-table index (\d+))?$/', $restore[2], $r)) {
+                $state['sp'][(int)$restore[1]] = ["{$r[2]}/{$r[3]}/{$r[4]}",(int)$r[1],(int)$r[5],$r[6] ?? '-',$r[7] ?? '-'];
+            } else $out = "  % Parameter error\n";
         } elseif (preg_match('/^service-port vlan (\d+) gpon 0\/(\d+)\/(\d+) ont (\d+) gemport (\d+) multi-service user-vlan \d+ tag-transform translate( inbound traffic-table index (\d+) outbound traffic-table index (\d+))?$/', $cmd, $m) && $mode === 'config') {
             if (isset($m[7]) && (!isset($state['tt'][(int)$m[7]]) || !isset($state['tt'][(int)$m[8]]))) $out = "  Failure: The traffic table does not exist\n";
             else $state['sp'][max(array_keys($state['sp']) ?: [0]) + 1] = ["{$m[2]}/{$m[3]}/{$m[4]}", (int)$m[1], (int)$m[5], $m[7] ?? '-', $m[8] ?? '-'];
@@ -322,7 +327,23 @@ while (true) {
             else {
                 $o = $state['onts'][$k];
                 $out = "[gpon]\n  <gpon-0/{$m[1]}>\n interface gpon 0/{$m[1]}\n  ont add {$m[2]} {$m[3]} sn-auth \"{$o[0]}\" omci ont-lineprofile-id 10 ont-srvprofile-id 20 desc \"{$o[1]}\"\n";
-                foreach ($state['sp'] as $i => [$sk, $vlan, $gem]) if ($sk === $k) $out .= " service-port {$i} vlan {$vlan} gpon 0/{$m[1]}/{$m[2]} ont {$m[3]} gemport {$gem} multi-service user-vlan {$vlan} tag-transform translate\n";
+                if (isset($state['native'][$k])) $out .= "  ont port native-vlan {$m[2]} {$m[3]} eth 1 vlan {$state['native'][$k]} priority 0\n";
+                foreach ($state['sp'] as $i => [$sk, $vlan, $gem, $up, $down]) if ($sk === $k) {
+                    $out .= " service-port {$i} vlan {$vlan} gpon 0/{$m[1]}/{$m[2]} ont {$m[3]} gemport {$gem} multi-service user-vlan {$vlan} tag-transform translate";
+                    if (is_numeric($up) && is_numeric($down)) $out .= " inbound traffic-table index {$up} outbound traffic-table index {$down}";
+                    $out .= "\n";
+                }
+            }
+        } elseif (preg_match('/^display statistics ont-eth (\d+) (\d+) ont-port (\d+)$/', $cmd, $m) && is_numeric($mode)) {
+            $k = "{$mode}/{$m[1]}/{$m[2]}";
+            if (!isset($state['onts'][$k]) || $state['onts'][$k][2] !== 'online') $out = "  Failure: The ONT is not online\n";
+            elseif ((int)$m[3] > 4) $out = "  Failure: The port does not exist\n";
+            else $out = "  Received frames : 98 100%\n  Received right bytes : 11119\n  Sent right bytes : 9007199254740993\n  Up traffic (kbps) : 125.5\n  Down traffic (kbps) : 1024\n";
+        } elseif (preg_match('/^display mac-address service-port (\d+)$/', $cmd, $m) && $mode === 'config') {
+            if (!isset($state['sp'][(int)$m[1]])) $out = "  Total: 0\n";
+            else {
+                [$k,$vlan,$gem] = $state['sp'][(int)$m[1]]; [$sl,$p,$ont] = explode('/',$k);
+                $out = " SRV-P BUNDLE TYPE MAC MAC TYPE F /S /P VPI VCI VLAN ID\n INDEX INDEX\n {$m[1]} - gpon 1010-1010-1000 dynamic 0 /{$sl} /{$p} {$ont} {$gem} {$vlan}\n Total: 1\n";
             }
         } elseif (preg_match('/^display ont version (\d+) (\d+)$/', $cmd, $m) && is_numeric($mode)) {
             $k = "{$mode}/{$m[1]}/{$m[2]}";

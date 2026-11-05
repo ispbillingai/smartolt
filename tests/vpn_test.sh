@@ -19,6 +19,12 @@ printf '#!/bin/sh\nexit "${TEST_SERVICE_EXIT:-0}"\n' > "$WORK/bin/systemctl"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/flock"
 chmod +x "$WORK/bin/"*
 export PATH="$WORK/bin:$PATH"
+if bash "$WORK/helper" trust >/dev/null 2>&1; then exit 1; fi
+printf 'vpn.example.com\n' > "$WORK/data/server-name"
+cp "$ROOT/tests/fixtures/vpn-ca.pem" "$WORK/data/ca.crt"
+trust=$(bash "$WORK/helper" trust)
+[[ "$trust" = vpn.example.com* && "$trust" = *'BEGIN CERTIFICATE'* && "$trust" != *'PRIVATE KEY'* ]]
+echo 'PASS trust helper exposes only canonical hostname and public CA'
 hash=$(printf 'test-password' | sha256sum | cut -d' ' -f1)
 [ "$(bash "$WORK/helper" add demo-olt1 "$hash")" = 10.253.1.1 ]
 [ "$(bash "$WORK/helper" add demo-olt2 "$hash")" = 10.253.1.2 ]

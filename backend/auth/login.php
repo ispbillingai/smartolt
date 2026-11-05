@@ -9,6 +9,7 @@ class LoginHandler {
     public function __construct() {
         $database = new Database();
         $this->db = $database->getConnection();
+        $this->db->exec("SET time_zone = '+03:00'");
     }
 
     private function startUserSession($user) {

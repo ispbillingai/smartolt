@@ -49,7 +49,11 @@ $olt = OltManager::publicOlt($row);
 $counts = $mgr->counts($id);
 $ports = $mgr->ports($id);
 $vpn = $olt['conn_type'] === 'vpn' ? $mgr->vpnStatus($row) : null;
-$script = $vpn !== null ? $mgr->mikrotikScript($row) : '';
+$script = '';
+if ($vpn !== null) {
+    try { $script = $mgr->mikrotikScript($row); }
+    catch (Throwable $e) { $vpn['error'] = $e->getMessage(); }
+}
 $perBoard = [];
 foreach ($ports as $p) {
     $perBoard[(int)$p['slot']]['total'] = ($perBoard[(int)$p['slot']]['total'] ?? 0) + (int)$p['total'];
@@ -200,15 +204,15 @@ include __DIR__ . '/backend/templates/header.php';
 <?php elseif ($tab === 'profiles'): ?>
 <div class="so-inline" style="margin-bottom:14px"><?php echo post_btn('refresh', ['id' => $id, 'back' => 'olt'], 'Scan OLT profiles', 'orange', 'search', '', 'Reading the OLT...', 'olts.php'); ?></div>
 <h3 style="font-size:16px">Line profiles</h3>
-<table class="so-table" style="font-size:14px;margin-bottom:18px"><thead><tr><th>Profile ID</th><th>Profile name</th><th>Bindings on the OLT</th><th>ONUs in SmartOLT</th></tr></thead><tbody>
+<div class="so-table-wrap"><table class="so-table" style="font-size:14px;margin-bottom:18px"><thead><tr><th>Profile ID</th><th>Profile name</th><th>Bindings on the OLT</th><th>ONUs in SmartOLT</th></tr></thead><tbody>
     <?php foreach ($olt['profiles']['line'] as $p): ?><tr><td><?php echo (int)$p['id']; ?></td><td><?php echo e($p['name']); ?></td><td><?php echo (int)$p['bindings']; ?></td><td><?php echo (int)($profileUse['line'][(int)$p['id']] ?? 0); ?></td></tr><?php endforeach; ?>
     <?php if (!$olt['profiles']['line']) echo '<tr><td colspan="4" class="so-muted">No profiles found on the OLT</td></tr>'; ?>
-</tbody></table>
+</tbody></table></div>
 <h3 style="font-size:16px">Service profiles</h3>
-<table class="so-table" style="font-size:14px;margin-bottom:18px"><thead><tr><th>Profile ID</th><th>Profile name</th><th>Bindings on the OLT</th></tr></thead><tbody>
+<div class="so-table-wrap"><table class="so-table" style="font-size:14px;margin-bottom:18px"><thead><tr><th>Profile ID</th><th>Profile name</th><th>Bindings on the OLT</th></tr></thead><tbody>
     <?php foreach ($olt['profiles']['srv'] as $p): ?><tr><td><?php echo (int)$p['id']; ?></td><td><?php echo e($p['name']); ?></td><td><?php echo (int)$p['bindings']; ?></td></tr><?php endforeach; ?>
     <?php if (!$olt['profiles']['srv']) echo '<tr><td colspan="3" class="so-muted">No profiles found on the OLT</td></tr>'; ?>
-</tbody></table>
+</tbody></table></div>
 <h3 style="font-size:16px">Speed tables (traffic tables)</h3>
 <table class="so-table" style="font-size:14px"><thead><tr><th>Index</th><th>CIR</th><th>PIR</th></tr></thead><tbody>
     <?php foreach ($olt['traffic'] as $idx => $t): ?><tr><td><?php echo (int)$idx; ?></td><td><?php echo e(fmt_speed($t['cir'])); ?></td><td><?php echo e(fmt_speed($t['pir'])); ?></td></tr><?php endforeach; ?>

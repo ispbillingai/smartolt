@@ -2,7 +2,7 @@
 require_once __DIR__ . '/backend/bootstrap.php';
 
 $reports = [
-    'auth' => 'Authorizations', 'export' => 'Export', 'import' => 'Import', 'traffic' => 'Traffic usage', 'wifi' => 'WiFi signal',
+    'auth' => 'Authorizations', 'export' => 'Export', 'import' => 'Import', 'traffic' => 'Ethernet traffic', 'wifi' => 'WiFi signal',
     'status' => 'ONU status changes', 'pon' => 'PON occupancy', 'splitters' => 'Splitter check', 'mismatch' => 'Find config mismatches (DB vs OLT)',
 ];
 $r = isset($reports[$_GET['r'] ?? '']) ? $_GET['r'] : 'auth';
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($do === 'resync') {
             $mgr->resync((int)($_POST['id'] ?? 0));
-            back('reports.php?r=mismatch', 'success', 'The saved VLAN, mode and speed were put on the OLT. The report updates after the next read.');
+            back('reports.php?r=mismatch', 'success', 'The saved VLAN, GEM port and speed were put on the OLT. The report updates after the next read.');
         }
         if ($do === 'auto_sync') {
             $mgr->setAutoSync(($_POST['on'] ?? '') === '1');
@@ -73,10 +73,39 @@ if ($r === 'auth') {
     if (isset($_GET['csv'])) {
         csv_download('authorizations', ['User', 'SN', 'PON port', 'Name', 'PON', 'Date'], array_map(function ($a) { $p = explode(' ', $a['target']); return [$a['source'] === 'auto' ? 'Auto action' : $a['user'], $p[1] ?? '', $p[0], $a['message'] === 'ok' ? '' : $a['message'], 'GPON', $a['created_at']]; }, $rows));
     }
+} elseif ($r === 'wifi') {
+    require_once __DIR__ . '/backend/lib/AcsIntegration.php';
+    $acs = new AcsIntegration($mgr);
+    $acsSettings = $acs->settings();
+    $allowed = array_flip(array_column($mgr->listOnus(['olt_id'=>(int)$g('olt'),'zone_id'=>(int)$g('zone'),'q'=>$g('q')]),'id'));
+    $rows = array_values(array_filter($acs->report(),fn($r)=>isset($allowed[$r['onu_id']])));
+    if (isset($_GET['csv'])) {
+        $data=[];
+        foreach($rows as $r0) foreach($r0['snapshot']['wifi'] ?? [] as $p) $data[]=[$r0['name'],$r0['sn'],$r0['olt_name'],$p['name'],$p['value'],$p['updated_at'],when($r0['checked_at'])];
+        csv_download('wifi-readings',['ONU','Serial','OLT','Parameter','Value','ACS parameter time','Read from ACS'],$data);
+    }
+} elseif ($r === 'traffic') {
+    require_once __DIR__ . '/backend/lib/EthernetMonitor.php';
+    $period = in_array((int)$g('period'), [24,168,720], true) ? (int)$g('period') : 24;
+    $unit = in_array($g('unit'), ['MB','GB'], true) ? $g('unit') : 'Auto';
+    $rows = (new EthernetMonitor($mgr))->latest((int)$g('olt'), (int)$g('zone'), $g('q'), $period);
+    if (isset($_GET['csv'])) csv_download('ethernet-traffic', ['ONU','Serial','OLT','Ethernet port','Received bytes','Sent bytes','Upload kbps','Download kbps','Read at'], array_map(function ($s) {
+        return [$s['description'],$s['sn'],$s['olt_name'],$s['eth_port'],$s['received_bytes'],$s['sent_bytes'],$s['up_kbps'],$s['down_kbps'],when($s['at'])];
+    }, $rows));
+    $bytes = function ($n) use ($unit) {
+        if ($n === null) return 'Not reported';
+        $divisor = $unit === 'GB' ? 1073741824 : ($unit === 'MB' ? 1048576 : 1);
+        $suffix = $unit;
+        if ($unit === 'Auto') {
+            $suffix = 'B';
+            foreach (['KB'=>1024,'MB'=>1048576,'GB'=>1073741824,'TB'=>1099511627776] as $name=>$size) if ((float)$n >= $size) { $divisor=$size; $suffix=$name; }
+        }
+        return number_format((float)$n/$divisor, $divisor === 1 ? 0 : 2) . ' ' . $suffix;
+    };
 } elseif ($r === 'status') {
     $period = (int)($g('period') ?: 24);
     $period = in_array($period, [24, 168, 720], true) ? $period : 24;
-    $from = $g('from') ?: date('Y-m-d H:i:s', time() - $period * 3600);
+    $from = $g('from') ?: AppTime::format('Y-m-d H:i:s', time() - $period * 3600);
     $rows = $mgr->statusChanges(['olt_id' => (int)$g('olt'), 'state' => $g('state'), 'from' => $from, 'to' => $g('to')], 2000);
     $zoneId = (int)$g('zone'); $q = $g('q');
     if ($zoneId || $q !== '' || $g('board') !== '' || $g('port') !== '') {
@@ -123,12 +152,12 @@ $num = function (array $nums, string $cur) {
             <tr><td><?php echo $a['source'] === 'auto' ? 'Auto action' : ($a['source'] === 'api' ? 'Billing dashboard' : e($a['user'] ?: 'Panel')); ?></td>
                 <td class="so-mono"><?php echo $u ? '<a href="onu.php?id=' . (int)$u['id'] . '">' . e($sn) . '</a>' : e($sn); ?></td>
                 <td><?php echo $u ? '<a href="onu.php?id=' . (int)$u['id'] . '">' . e($u['description']) . '</a>' : '<span class="so-muted">Deleted</span>'; ?></td>
-                <td>GPON</td><td><?php echo e(date('d-M-Y H:i:s', strtotime($a['created_at']))); ?></td></tr>
+                <td>GPON</td><td><?php echo e(AppTime::format('d-M-Y H:i:s', $a['created_at'])); ?></td></tr>
         <?php endforeach; ?>
     </tbody></table></div>
 
 <?php elseif ($r === 'export'): $count = count($mgr->listOnus($exportFilter));
-    $history = $mgr->actionsFiltered(['action' => 'report.export', 'from' => date('Y-m-d', time() - 7 * 86400)], 50); ?>
+    $history = $mgr->actionsFiltered(['action' => 'report.export', 'from' => AppTime::format('Y-m-d', time() - 7 * 86400)], 50); ?>
     <form method="GET" class="so-panel">
         <div class="so-panel-h"><span>ONU database export</span></div>
         <div class="so-panel-b">
@@ -164,18 +193,40 @@ $num = function (array $nums, string $cur) {
         <input type="file" name="file" accept=".csv,text/csv" required> <button class="so-btn so-btn-blue"><i class="fa fa-download"></i> Import</button>
     </form>
 
-<?php elseif ($r === 'traffic' || $r === 'wifi'): ?>
+<?php elseif ($r === 'traffic'): ?>
+    <?php echo page_title('Ethernet traffic', 'Latest readings from the physical Ethernet ports on your ONUs.'); ?>
+    <form method="GET" class="so-box so-inline" style="align-items:end"><input type="hidden" name="r" value="traffic">
+        <div><label class="so-label">Search</label><input name="q" value="<?php echo e($g('q')); ?>" class="so-input" placeholder="Serial, name or address"></div>
+        <?php echo $sel('period','Read within',implode('',array_map(function ($h,$l) use ($period) { return '<option value="'.$h.'"'.($h===$period?' selected':'').'>'.$l.'</option>'; },[24,168,720],['Last 24 hours','Last week','Last month']))); ?>
+        <?php echo $sel('unit','Display unit',implode('',array_map(function ($v) use ($unit) { return '<option'.($v===$unit?' selected':'').'>'.$v.'</option>'; },['Auto','MB','GB'])),'100px'); ?>
+        <?php echo $sel('olt','OLT','<option value="">Any</option>'.olt_options($olts,$g('olt'))); ?>
+        <?php echo $sel('zone','Zone',options($mgr->zones(),$g('zone'),'Any')); ?>
+        <button class="so-btn so-btn-blue">Apply</button><button name="csv" value="1" class="so-btn so-btn-grey">Export CSV</button><?php echo $reset(); ?>
+    </form>
+    <p class="so-muted">Counters are totals reported by the ONU since its counters were reset. The time filter selects when a reading was taken; these are not billing totals for that period. Open a port to read it again or start live readings.</p>
+    <?php if (!$rows): ?><div class="so-box">No readings match these filters. <a href="onus.php">Open an ONU</a> and select its traffic monitor to collect a reading.</div><?php else: ?>
+    <div class="so-table-wrap"><table class="so-table"><thead><tr><th>ONU / port</th><th>OLT</th><th>Received</th><th>Sent</th><th>Upload</th><th>Download</th><th>Last read</th></tr></thead><tbody>
+    <?php foreach ($rows as $s): ?><tr><td><a href="traffic.php?id=<?php echo (int)$s['onu_id']; ?>&amp;port=<?php echo (int)$s['eth_port']; ?>"><?php echo e($s['description'] ?: $s['sn']); ?> · ETH <?php echo (int)$s['eth_port']; ?></a><br><small class="so-mono"><?php echo e($s['sn']); ?></small></td><td><?php echo e($s['olt_name']); ?></td><td><?php echo e($bytes($s['received_bytes'])); ?></td><td><?php echo e($bytes($s['sent_bytes'])); ?></td><td><?php echo $s['up_kbps']===null?'Not reported':e(number_format((float)$s['up_kbps'],2).' kbps'); ?></td><td><?php echo $s['down_kbps']===null?'Not reported':e(number_format((float)$s['down_kbps'],2).' kbps'); ?></td><td><?php echo e(when($s['at'])); ?></td></tr><?php endforeach; ?>
+    </tbody></table></div><?php endif; ?>
+
+<?php elseif ($r === 'wifi'): ?>
+    <?php echo page_title('WiFi readings','Measurements and settings reported to your ACS.',btn('ACS connection','grey','acs.php')); ?>
     <form method="GET" class="so-box" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end"><input type="hidden" name="r" value="<?php echo $r; ?>">
-        <div><label class="so-label">Search</label><div class="so-search"><i class="fa fa-search"></i><input name="q" class="so-input" style="width:190px" placeholder="SN, MAC, IP, name, address"></div></div>
-        <?php if ($r === 'traffic'): ?><div><label class="so-label">Period</label><select class="so-select" style="width:150px"><option>Last month</option><option>Last week</option><option>Last 24 hours</option></select></div>
-        <div><label class="so-label">Unit</label><select class="so-select" style="width:110px"><option>Auto</option><option>MB</option><option>GB</option></select></div><?php endif; ?>
+        <div><label class="so-label">Search</label><div class="so-search"><i class="fa fa-search"></i><input name="q" value="<?php echo e($g('q')); ?>" class="so-input" style="width:190px" placeholder="Serial, name or address"></div></div>
         <?php echo $sel('olt', 'OLT', '<option value="">Any</option>' . olt_options($olts, $g('olt'))); ?>
         <?php echo $sel('zone', 'Zone', options($mgr->zones(), $g('zone'), 'Any')); ?>
-        <span style="margin-left:auto"><?php echo $reset(); ?></span>
+        <button class="so-btn so-btn-blue">Apply</button><button class="so-btn so-btn-grey" name="csv" value="1">Export CSV</button><span style="margin-left:auto"><?php echo $reset(); ?></span>
     </form>
-    <div class="so-box so-muted">No data. <?php echo $r === 'traffic'
-        ? 'Traffic per ONU is not read from the OLT yet; your billing dashboard shows each customer\'s data use from the router.'
-        : 'WiFi signal is read from the ONU itself over TR069, which is not connected to SmartOLT yet.'; ?></div>
+    <?php if (!$acsSettings['enabled']): ?><div class="so-alert a-info">Connect your ACS to collect WiFi readings. <a href="acs.php">Set up the connection</a>.</div><?php endif; ?>
+    <p class="so-muted">These are cached ACS readings. Open an ONU's TR-069 page to read it again. Signal strength appears only when the ONU reports it; missing measurements stay unknown.</p>
+    <?php if (!$rows): ?><div class="so-box">No ACS readings match these filters. <a href="onus.php">Choose an ONU</a>, open TR-069 and read the device.</div><?php endif; ?>
+    <?php foreach($rows as $row): $snapshot=$row['snapshot']; ?>
+    <?php echo panel_open($row['name'] ?: $row['sn'],'<a href="acs.php?onu_id='.(int)$row['onu_id'].'">Open TR-069</a>'); ?>
+    <p><?php echo e($row['olt_name'].' · '.$row['sn']); ?> · Read <?php echo e(when($row['checked_at'])); ?><?php if(!empty($snapshot['ssid'])): ?> · SSID: <?php echo e($snapshot['ssid']); ?><?php endif; ?></p>
+    <?php if($row['last_error']) echo alert($row['last_error'],'err'); ?>
+    <?php if(empty($snapshot['wifi'])): ?><p class="so-muted">The ACS has not reported WiFi parameters for this ONU.</p><?php else: ?>
+    <div class="so-table-wrap"><table class="so-table"><thead><tr><th>Reported parameter</th><th>Value</th><th>ACS parameter time</th></tr></thead><tbody><?php foreach($snapshot['wifi'] as $p): ?><tr><td class="so-mono"><?php echo e($p['name']); ?></td><td><?php echo e($p['value']); ?></td><td><?php echo e($p['updated_at'] ?: 'Not reported'); ?></td></tr><?php endforeach; ?></tbody></table></div>
+    <?php endif; ?><?php echo panel_close(); ?><?php endforeach; ?>
 
 <?php elseif ($r === 'status'): ?>
     <form method="GET" class="so-box"><input type="hidden" name="r" value="status">
@@ -264,10 +315,10 @@ $num = function (array $nums, string $cur) {
     <?php echo panel_open('Automatically keep the OLT config in sync with SmartOLT', '', 'clock-o'); ?>
         <p style="margin:0 0 8px">Status: <?php echo $on ? badge('Enabled', 'green') : badge('Disabled', 'red'); ?></p>
         <div style="font-size:14px;line-height:1.7"><i class="fa fa-check"></i> Daily automatic scan and compare<br><i class="fa fa-check"></i> Auto-fix: Database config goes back to the OLT config</div>
-        <p style="font-size:14px;margin:8px 0"><i class="fa fa-info-circle"></i> What's being synced: ONU VLAN, ONU mode and speed profile (service ports).</p>
+        <p style="font-size:14px;margin:8px 0"><i class="fa fa-info-circle"></i> What's being synced: ONU VLAN, GEM port and speed profile (service ports).</p>
         <p style="font-size:14px"><?php if (!$on): ?><span style="color:var(--red)">Auto keep-in-sync is currently disabled for all OLTs.</span><?php endif; ?>
             <?php echo post_btn('auto_sync', ['on' => $on ? '' : '1'], $on ? 'Disable for all OLTs' : 'Enable for all OLTs', $on ? 'grey' : 'blue', 'magic',
-                $on ? '' : 'Turn on keep in sync? Every day SmartOLT puts the saved VLAN, mode and speed back on any ONU whose setup on the OLT changed.'); ?></p>
+                $on ? '' : 'Turn on keep in sync? Every day SmartOLT puts the saved VLAN, GEM port and speed back on any ONU whose setup on the OLT changed.'); ?></p>
         <p class="so-muted" style="font-size:13px;margin-bottom:0">Enable this if SmartOLT is where you manage your ONUs, so a change made on the OLT by hand is put back. If another system manages ONUs directly on the OLT, keep this disabled.</p>
     <?php echo panel_close(); ?>
     <?php echo panel_open('Manual Check', '', 'search'); ?>
@@ -286,7 +337,7 @@ $num = function (array $nums, string $cur) {
                 <td><?php echo e($u['olt_name'] . ' ' . onu_place($u)); ?></td>
                 <td>VLAN <?php echo $u['vlan'] ? (int)$u['vlan'] : '-'; ?>, <?php echo e($u['speed_name'] ?? 'no speed limit'); ?>, <?php echo e($u['mode'] ?: 'bridge'); ?></td>
                 <td><?php echo implode('<br>', array_map('e', $u['issues'])); ?></td>
-                <td class="num"><?php echo $u['vlan'] ? post_btn('resync', ['id' => $u['id']], 'Resync', 'blue', 'refresh', 'Put the saved VLAN, mode and speed on the OLT for ' . $u['description'] . '? The customer drops for a few seconds.', 'Resyncing on the OLT...') : '<span class="so-muted" style="font-size:13px">Set its VLAN first</span>'; ?></td></tr><?php endforeach; ?>
+                <td class="num"><?php echo $u['vlan'] ? post_btn('resync', ['id' => $u['id']], 'Resync', 'blue', 'refresh', 'Put the saved VLAN, GEM port and speed on the OLT for ' . $u['description'] . '? The customer drops for a few seconds.', 'Resyncing on the OLT...') : '<span class="so-muted" style="font-size:13px">Set its VLAN first</span>'; ?></td></tr><?php endforeach; ?>
         </tbody></table></div>
         <?php endif; ?>
     <?php echo panel_close(); ?>

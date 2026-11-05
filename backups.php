@@ -9,6 +9,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     try {
         switch ($_POST['do'] ?? '') {
+            case 'schedule':
+                $backups->schedule($oltId, (int)($_POST['hours'] ?? 0));
+                back($self, 'success', 'Backup schedule saved. The polling task runs scheduled backups.');
             case 'capture':
                 $backups->capture($oltId);
                 back($self, 'success', 'Configuration backup created.');
@@ -50,6 +53,15 @@ include __DIR__ . '/backend/templates/header.php';
     <?php endif; ?>
 </div>
 <p class="so-muted">Downloads include the OLT configuration and may contain network credentials. To keep running changes after an OLT reboot, use Save config separately. Restore is performed through the OLT’s own administration tools.</p>
+<?php if ($olts): ?>
+<?php echo panel_open('Automatic backups'); ?>
+<div class="so-table-wrap"><table class="so-table"><thead><tr><th>OLT</th><th>Schedule</th><th>Last successful backup</th><th>Last error</th></tr></thead><tbody>
+<?php foreach ($olts as $device): ?><tr><td><?php echo e($device['name']); ?></td><td>
+<form method="POST" class="so-inline"><?php echo csrf_field(); ?><input type="hidden" name="do" value="schedule"><input type="hidden" name="olt_id" value="<?php echo (int)$device['id']; ?>">
+<select name="hours" class="so-select" aria-label="Backup interval for <?php echo e($device['name']); ?>"><?php foreach ([0 => 'Disabled', 6 => 'Every 6 hours', 12 => 'Every 12 hours', 24 => 'Daily', 168 => 'Weekly'] as $hours => $label): ?><option value="<?php echo $hours; ?>" <?php echo (int)$device['backup_interval_hours'] === $hours ? 'selected' : ''; ?>><?php echo $label; ?></option><?php endforeach; ?></select><button class="so-btn so-btn-blue">Save schedule</button></form>
+</td><td><?php echo $device['last_backup_at'] ? e(when($device['last_backup_at'])) : 'Never'; ?></td><td><?php echo e($device['backup_error']); ?></td></tr><?php endforeach; ?>
+</tbody></table></div>
+<?php echo panel_close(); endif; ?>
 <?php if (!$rows): ?><div class="so-empty">No configuration backups yet.</div><?php else: ?>
 <div class="so-table-wrap"><table class="so-table">
     <thead><tr><th>OLT</th><th>Captured</th><th>By</th><th>Size</th><th>SHA-256</th><th>Actions</th></tr></thead>

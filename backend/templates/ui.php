@@ -133,7 +133,7 @@ function onu_place(array $u): string
 function ago(?string $at): string
 {
     if (!$at) return '-';
-    $s = max(0, time() - strtotime($at));
+    $s = max(0, time() - AppTime::timestamp($at));
     if ($s < 60) return $s . ' seconds ago';
     if ($s < 3600) { $n = (int)round($s / 60); return $n . ($n === 1 ? ' minute ago' : ' minutes ago'); }
     if ($s < 86400) { $n = (int)round($s / 3600); return $n . ($n === 1 ? ' hour ago' : ' hours ago'); }
@@ -144,8 +144,7 @@ function ago(?string $at): string
 function when(?string $at): string
 {
     if (!$at) return '-';
-    $t = strtotime($at);
-    return date('Y-m-d', $t) === date('Y-m-d') ? 'Today ' . date('H:i:s', $t) : date('Y-m-d H:i', $t);
+    return AppTime::format('Y-m-d', $at) === AppTime::format('Y-m-d') ? 'Today ' . AppTime::format('H:i:s', $at) : AppTime::format('Y-m-d H:i', $at);
 }
 
 /** <option> list from rows with id and name. */

@@ -7,6 +7,7 @@ require_once __DIR__ . '/Huawei.php';
 require_once __DIR__ . '/SnmpClient.php';
 require_once __DIR__ . '/SnmpRates.php';
 require_once __DIR__ . '/Schema.php';
+require_once __DIR__ . '/AppTime.php';
 require_once __DIR__ . '/../config/database.php';
 
 class OltManager
@@ -14,6 +15,8 @@ class OltManager
     private PDO $db;
     private Database $config;
     private ?string $lastTranscript = null;
+    private ?Huawei $activeOltSession = null;
+    private ?int $activeOltId = null;
     public string $source = 'panel';
     // Who is acting, for the Events page: the signed in username; empty for the API and the cron.
     public string $user = '';
@@ -30,9 +33,10 @@ class OltManager
     public function __construct()
     {
         // One clock for every stored time, whether a page, the API or the cron wrote it.
-        date_default_timezone_set('Africa/Nairobi');
+        date_default_timezone_set(AppTime::STORAGE_ZONE);
         $this->config = new Database();
         $this->db = $this->config->getConnection();
+        $this->db->exec("SET time_zone = '+03:00'");
         Schema::ensure($this->db);
     }
 
@@ -149,7 +153,7 @@ class OltManager
         foreach (['changed_from' => '>=', 'changed_to' => '<'] as $k => $op) {
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f[$k] ?? ''))) {
                 $where[] = "GREATEST(COALESCE(u.last_up_at, '2000-01-01'), COALESCE(u.last_down_at, '2000-01-01')) {$op} ?";
-                $args[] = $k === 'changed_to' ? date('Y-m-d', strtotime($f[$k] . ' +1 day')) : $f[$k];
+                $args[] = AppTime::dayBoundary((string)$f[$k], $k === 'changed_to');
             }
         }
         if (in_array($f['mode'] ?? '', ['bridge', 'router'], true)) { $where[] = 'u.mode=?'; $args[] = $f['mode']; }
@@ -268,6 +272,7 @@ class OltManager
             if ($port < 1 || $port > 65535) throw new InvalidArgumentException('The Telnet port must be between 1 and 65535.');
         }
         if ($user === '') throw new InvalidArgumentException('Enter the OLT username.');
+        if (strlen($user) > 100 || strlen($pass) > 255 || preg_match('/[\x00-\x1f\x7f]/', $user . $pass)) throw new InvalidArgumentException('OLT credentials must fit on one line without control characters.');
         $now = self::now();
         $olt = !empty($in['id']) ? $this->olt((int)$in['id']) : null;
         if (!empty($in['id']) && !$olt) throw new InvalidArgumentException('OLT not found.');
@@ -316,14 +321,41 @@ class OltManager
     {
         $olt = $this->olt($id);
         if (!$olt) throw new InvalidArgumentException('OLT not found.');
-        if ($olt['conn_type'] === 'vpn') {
-            // Retain the row if revocation fails, so the operator can retry with its credentials intact.
-            $this->vpnRemove($olt);
-        }
-        $this->db->prepare('DELETE FROM olts WHERE id=?')->execute([$id]);
-        // Nothing left to watch on it, so its alarms end here.
-        $this->db->prepare('UPDATE network_events SET resolved_at=?, updated_at=? WHERE olt_id=? AND resolved_at IS NULL')->execute([self::now(), self::now(), $id]);
+        $lock = $this->db->quote('smartolt_' . substr(hash('sha256', $this->config->getSubdomain()), 0, 32) . '_' . $id);
+        if ((int)$this->db->query("SELECT GET_LOCK({$lock}, 30)")->fetchColumn() !== 1) throw new OltError('The OLT is busy with another task. Try again in a moment.');
+        try {
+            $olt = $this->olt($id);
+            if (!$olt) throw new InvalidArgumentException('OLT not found.');
+            if ($olt['conn_type'] === 'vpn') {
+                // Retain the row if revocation fails, so retry keeps its credentials intact.
+                $this->vpnRemove($olt);
+            }
+            $this->db->beginTransaction();
+            try {
+                $rows = $this->db->prepare('SELECT id FROM onus WHERE olt_id=?'); $rows->execute([$id]);
+                $this->removeOnuRows($rows->fetchAll(PDO::FETCH_COLUMN));
+                $this->db->prepare("DELETE m FROM meta m JOIN pending_onus p ON m.k=CONCAT('autofail_',p.sn) WHERE p.olt_id=?")->execute([$id]);
+                // A scoped rule/queue must never become global when its OLT is removed.
+                $this->db->prepare('DELETE FROM pending_onus WHERE olt_id=?')->execute([$id]);
+                $this->db->prepare('DELETE FROM auto_actions WHERE olt_id=?')->execute([$id]);
+                $this->db->prepare('DELETE FROM pon_stats WHERE olt_id=?')->execute([$id]);
+                $this->db->prepare('DELETE FROM olts WHERE id=?')->execute([$id]);
+                $this->db->prepare('UPDATE network_events SET resolved_at=?, updated_at=? WHERE olt_id=? AND resolved_at IS NULL')->execute([self::now(), self::now(), $id]);
+                $this->db->commit();
+            } catch (Throwable $failure) { if ($this->db->inTransaction()) $this->db->rollBack(); throw $failure; }
+        } finally { $this->db->query("SELECT RELEASE_LOCK({$lock})"); }
         $this->log(null, 'olt.delete', $olt['name'], true, 'removed from SmartOLT, nothing changed on the OLT');
+    }
+
+    /** Call inside a transaction. Preserve support tickets while removing private ONU notes. */
+    private function removeOnuRows(array $ids): void
+    {
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $ids))), 1000) as $chunk) {
+            $slots = implode(',', array_fill(0, count($chunk), '?'));
+            $this->db->prepare("DELETE FROM onu_notes WHERE onu_id IN ({$slots})")->execute($chunk);
+            $this->db->prepare("UPDATE tickets SET onu_id=NULL WHERE onu_id IN ({$slots})")->execute($chunk);
+            $this->db->prepare("DELETE FROM onus WHERE id IN ({$slots})")->execute($chunk);
+        }
     }
 
     // ----- SmartOLT VPN -----
@@ -383,10 +415,22 @@ class OltManager
         return ['connected' => $s[0] === 'connected', 'from' => $s[1] ?? '', 'since' => $s[2] ?? ''];
     }
 
-    /** The VPN server routers dial: this site's own host name, which points at the SmartOLT box. */
+    /** Canonical name is the identity on the server certificate, shared by all ISP sites. */
     public function vpnServer(): string
     {
-        return (string)(parse_url($this->config->getAppUrl(), PHP_URL_HOST) ?: '');
+        try { return $this->vpnTrust()['server']; }
+        catch (Throwable $e) { return ''; }
+    }
+
+    public function vpnTrust(): array
+    {
+        $parts = explode("\n", $this->vpnHelper(['trust']), 2);
+        $server = trim($parts[0]);
+        if (!preg_match('/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/iD', $server)
+            || !isset($parts[1]) || !@openssl_x509_read($parts[1])) {
+            throw new RuntimeException('VPN certificate trust is not configured. Run VPN setup with its canonical DNS hostname.');
+        }
+        return ['server' => $server, 'ca' => $parts[1]];
     }
 
     /**
@@ -397,10 +441,23 @@ class OltManager
     {
         if ($olt['conn_type'] !== 'vpn' || !$olt['vpn_pass_enc']) return '';
         require_once __DIR__ . '/Mikrotik.php';
-        return Mikrotik::script($olt, $this->vpnServer(), $this->decrypt($olt['vpn_pass_enc']));
+        $trust = $this->vpnTrust();
+        return Mikrotik::script($olt, $trust['server'], $this->decrypt($olt['vpn_pass_enc']), $trust['ca']);
     }
 
     // ----- Talking to the OLT -----
+
+    /** Coordinate external device actions with OLT reads/replacement without opening Telnet. */
+    public function withOltLock(int $id, callable $fn, int $wait = 0)
+    {
+        if ($id < 1) throw new InvalidArgumentException('Invalid OLT.');
+        $name = $this->db->quote('smartolt_' . substr(hash('sha256', $this->config->getSubdomain()), 0, 32) . '_' . $id);
+        if ((int)$this->db->query("SELECT GET_LOCK({$name}, " . max(0, $wait) . ')')->fetchColumn() !== 1) {
+            throw new OltError('The OLT is busy with another task. Try again in a moment.');
+        }
+        try { return $fn(); }
+        finally { $this->db->query("SELECT RELEASE_LOCK({$name})"); }
+    }
 
     /**
      * Run $fn with a logged in session while holding that OLT's lock, so the 5 minute read and a
@@ -408,6 +465,10 @@ class OltManager
      */
     public function withOlt(array $olt, callable $fn, int $wait = 30)
     {
+        if ($this->activeOltSession !== null && $this->activeOltId === (int)$olt['id']) {
+            try { return $fn($this->activeOltSession); }
+            finally { $this->lastTranscript = $this->activeOltSession->transcript(); }
+        }
         $name = $this->db->quote('smartolt_' . substr(hash('sha256', $this->config->getSubdomain()), 0, 32) . '_' . (int)$olt['id']);
         if ((int)$this->db->query("SELECT GET_LOCK({$name}, " . (int)$wait . ')')->fetchColumn() !== 1) {
             throw new OltError('The OLT is busy with another task. Try again in a moment.');
@@ -418,8 +479,12 @@ class OltManager
                 throw new OltError('Your MikroTik is not connected to the SmartOLT VPN yet. Paste the commands shown on this OLT\'s page into its terminal, then try again.');
             }
             $s = Huawei::connect($olt['host'], (int)$olt['telnet_port'], $olt['username'], $this->decrypt($olt['password_enc']));
+            $this->activeOltSession = $s;
+            $this->activeOltId = (int)$olt['id'];
             return $fn($s);
         } finally {
+            $this->activeOltSession = null;
+            $this->activeOltId = null;
             if ($s) {
                 $this->lastTranscript = $s->transcript();
                 $s->close();
@@ -525,17 +590,17 @@ class OltManager
     {
         // SNMP has its own health: a failed CLI login must not hide a working monitoring path.
         if (!empty($olt['snmp_enabled'])) $this->pollSnmp($olt);
-        $known = [];
-        $st = $this->db->prepare('SELECT id, frame, slot, port, ont_id, run_state, status_group, last_down_cause, history_at FROM onus WHERE olt_id=?');
-        $st->execute([$olt['id']]);
-        foreach ($st->fetchAll() as $r) {
-            $known["{$r['frame']}/{$r['slot']}/{$r['port']}/{$r['ont_id']}"] = $r;
-        }
-
         try {
-            $data = $this->withOlt($olt, function (Huawei $s) use ($withSignal, $known) {
+            $summary = $this->withOlt($olt, function (Huawei $s) use ($withSignal, $olt) {
+            $known = [];
+            $st = $this->db->prepare('SELECT id, sn, frame, slot, port, ont_id, run_state, status_group, last_down_cause, history_at FROM onus WHERE olt_id=?');
+            $st->execute([$olt['id']]);
+            foreach ($st->fetchAll() as $r) {
+                $known["{$r['frame']}/{$r['slot']}/{$r['port']}/{$r['ont_id']}"] = $r;
+            }
                 $info = $s->info();
                 $onts = $s->onts();
+                if (!$s->inventoryComplete()) throw new OltError('The OLT inventory did not include a verified complete row count. The previous inventory was preserved.');
                 $waiting = $s->autofind();
                 $services = $s->servicePorts();
                 $ports = [];
@@ -567,9 +632,10 @@ class OltManager
                         }
                     }
                 }
-                return compact('info', 'onts', 'waiting', 'services', 'summary', 'optical', 'details');
+                return $this->persistRefresh($olt, compact('info', 'onts', 'waiting', 'services', 'summary', 'optical', 'details') + ['inventory_complete' => $s->inventoryComplete(), 'with_signal' => $withSignal], $known);
             });
         } catch (Throwable $e) {
+            if ($e instanceof OltError && strpos($e->getMessage(),'The OLT is busy with another task.') === 0) throw $e;
             $this->db->prepare("UPDATE olts SET status='error', last_error=?, last_polled_at=?, updated_at=? WHERE id=?")
                 ->execute([mb_substr($e->getMessage(), 0, 500), self::now(), self::now(), $olt['id']]);
             if (!$e instanceof OltError || stripos($e->getMessage(), 'busy') === false) {
@@ -577,128 +643,157 @@ class OltManager
             }
             throw $e;
         }
-        $this->resolveEvent('olt_unreachable:' . $olt['id']);
+        return $summary;
+    }
 
-        $info = $data['info'];
-        $now = self::now();
-        $this->db->prepare("UPDATE olts SET status='online', last_error='', model=?, version=?, boards_json=?, profiles_json=?, traffic_json=?, uptime=?, temperature=?, last_polled_at=?, updated_at=? WHERE id=?")
-            ->execute([$info['model'], $info['version'], json_encode($info['boards']),
-                json_encode(['line' => $info['line_profiles'], 'srv' => $info['srv_profiles'], 'vlans' => $info['vlans']]),
-                json_encode($info['traffic']), $info['uptime'], $info['temperature'], $now, $now, $olt['id']]);
-        $this->db->prepare('REPLACE INTO autofind_cache (olt_id, onus_json, at) VALUES (?,?,?)')
-            ->execute([$olt['id'], json_encode($data['waiting']), $now]);
+    /** Persist one validated inventory while the OLT session lock is still held. */
+    private function persistRefresh(array $olt, array $data, array $known): array
+    {
+        $this->db->beginTransaction();
+        try {
+            $this->resolveEvent('olt_unreachable:' . $olt['id']);
 
-        $up = $this->db->prepare('INSERT INTO onus (olt_id, frame, slot, port, ont_id, sn, description, control_flag, run_state, config_state, match_state, status_group, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON DUPLICATE KEY UPDATE sn=VALUES(sn), description=VALUES(description), control_flag=VALUES(control_flag),
-                run_state=VALUES(run_state), config_state=VALUES(config_state), match_state=VALUES(match_state),
-                status_group=VALUES(status_group), updated_at=VALUES(updated_at)');
-        $more = $this->db->prepare('UPDATE onus SET model=IF(?<>\'\', ?, model), distance_m=?, last_down_cause=?, last_up_at=COALESCE(?, last_up_at), last_down_at=COALESCE(?, last_down_at)
-            WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $sig = $this->db->prepare('UPDATE onus SET rx_power=?, tx_power=?, olt_rx_power=?, temperature=?, signal_at=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $noSig = $this->db->prepare('UPDATE onus SET rx_power=NULL, tx_power=NULL, olt_rx_power=NULL WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $idOf = $this->db->prepare('SELECT id, history_at FROM onus WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $event = $this->db->prepare('INSERT INTO status_events (onu_id, state, cause, at) VALUES (?,?,?,?)');
-        $hist = $this->db->prepare('INSERT INTO signal_history (onu_id, rx_power, olt_rx_power, at) VALUES (?,?,?,?)');
-        $histAt = $this->db->prepare('UPDATE onus SET history_at=? WHERE id=?');
+            $info = $data['info'];
+            $now = self::now();
+            $this->db->prepare("UPDATE olts SET status='online', last_error='', model=?, version=?, boards_json=?, profiles_json=?, traffic_json=?, uptime=?, temperature=?, last_polled_at=?, updated_at=? WHERE id=?")
+                ->execute([$info['model'], $info['version'], json_encode($info['boards']),
+                    json_encode(['line' => $info['line_profiles'], 'srv' => $info['srv_profiles'], 'vlans' => $info['vlans']]),
+                    json_encode($info['traffic']), $info['uptime'], $info['temperature'], $now, $now, $olt['id']]);
+            $this->db->prepare('REPLACE INTO autofind_cache (olt_id, onus_json, at) VALUES (?,?,?)')
+                ->execute([$olt['id'], json_encode($data['waiting']), $now]);
 
-        // VLAN, GEM port and speed as the OLT has them: the first service port of each ONT.
-        $service = [];
-        $serviceCount = [];
-        foreach ($data['services'] as $sp) {
-            $k = "{$sp['frame']}/{$sp['slot']}/{$sp['port']}/{$sp['ont_id']}";
-            if (!isset($service[$k]) || $sp['index'] < $service[$k]['index']) $service[$k] = $sp;
-            $serviceCount[$k] = ($serviceCount[$k] ?? 0) + 1;
-        }
-        $profileByRate = [];
-        foreach ($this->speedProfiles() as $p) $profileByRate["{$p['down_kbps']}/{$p['up_kbps']}"] = (int)$p['id'];
-        $svc = $this->db->prepare('UPDATE onus SET vlan=?, gemport=?, speed_profile_id=COALESCE(?, speed_profile_id), olt_down_kbps=?, olt_up_kbps=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $svcCount = $this->db->prepare('UPDATE onus SET service_ports=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $perPon = [];
+            $up = $this->db->prepare('INSERT INTO onus (olt_id, frame, slot, port, ont_id, sn, description, control_flag, run_state, config_state, match_state, status_group, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE sn=VALUES(sn), description=VALUES(description), control_flag=VALUES(control_flag),
+                    run_state=VALUES(run_state), config_state=VALUES(config_state), match_state=VALUES(match_state),
+                    status_group=VALUES(status_group), updated_at=VALUES(updated_at)');
+            $more = $this->db->prepare('UPDATE onus SET model=IF(?<>\'\', ?, model), distance_m=?, last_down_cause=?, last_up_at=COALESCE(?, last_up_at), last_down_at=COALESCE(?, last_down_at)
+                WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $sig = $this->db->prepare('UPDATE onus SET rx_power=?, tx_power=?, olt_rx_power=?, temperature=?, signal_at=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $noSig = $this->db->prepare('UPDATE onus SET rx_power=NULL, tx_power=NULL, olt_rx_power=NULL WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $idOf = $this->db->prepare('SELECT id, history_at FROM onus WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $event = $this->db->prepare('INSERT INTO status_events (onu_id, state, cause, at) VALUES (?,?,?,?)');
+            $hist = $this->db->prepare('INSERT INTO signal_history (onu_id, rx_power, olt_rx_power, at) VALUES (?,?,?,?)');
+            $histAt = $this->db->prepare('UPDATE onus SET history_at=? WHERE id=?');
 
-        $seen = [];
-        $stats = ['total' => 0, 'online' => 0, 'los' => 0, 'power_fail' => 0, 'other_off' => 0, 'warning' => 0, 'critical' => 0];
-        foreach ($data['onts'] as $o) {
-            $pos = [$olt['id'], $o['frame'], $o['slot'], $o['port'], $o['ont_id']];
-            $pk = "{$o['frame']}/{$o['slot']}/{$o['port']}";
-            $k = "{$pk}/{$o['ont_id']}";
-            $sum = $data['summary'][$pk][$o['ont_id']] ?? [];
-            $run = strtolower($o['run_state']);
-            $cause = $sum['down_cause'] ?? ($data['details'][$k]['last down cause'] ?? ($run === 'online' ? '' : ($known[$k]['last_down_cause'] ?? '')));
-            $cause = $cause === '-' ? '' : $cause;
-            $group = strtolower($o['control_flag']) === 'deactivated' ? 'disabled' : Huawei::downCategory($run, $cause);
-
-            $up->execute(array_merge($pos, [$o['sn'], $o['description'], $o['control_flag'], $run, $o['config_state'], $o['match_state'], $group, $now]));
-            $more->execute(array_merge([$sum['model'] ?? '', $sum['model'] ?? '', $sum['distance_m'] ?? null, $run === 'online' ? '' : $cause,
-                $sum['last_up'] ?? null, $sum['last_down'] ?? null], $pos));
-            $seen[$k] = true;
-            if ($sp = $service[$k] ?? null) {
-                $down = $info['traffic'][$sp['down_table']]['cir'] ?? null;
-                $upk = $info['traffic'][$sp['up_table']]['cir'] ?? null;
-                $svc->execute(array_merge([$sp['vlan'], $sp['gemport'], $profileByRate["{$down}/{$upk}"] ?? null, $down, $upk], $pos));
+            // VLAN, GEM port and speed as the OLT has them: the first service port of each ONT.
+            $service = [];
+            $serviceCount = [];
+            foreach ($data['services'] as $sp) {
+                $k = "{$sp['frame']}/{$sp['slot']}/{$sp['port']}/{$sp['ont_id']}";
+                if (!isset($service[$k]) || $sp['index'] < $service[$k]['index']) $service[$k] = $sp;
+                $serviceCount[$k] = ($serviceCount[$k] ?? 0) + 1;
             }
-            // Only trusted when the OLT listed service ports at all: an unparsed table must not flag every ONU.
-            if ($data['services']) $svcCount->execute(array_merge([$serviceCount[$k] ?? 0], $pos));
-            $perPon[$pk]['total'] = ($perPon[$pk]['total'] ?? 0) + 1;
-            $perPon[$pk]['online'] = ($perPon[$pk]['online'] ?? 0) + ($group === 'online' ? 1 : 0);
+            $profileByRate = [];
+            foreach ($this->speedProfiles() as $p) $profileByRate["{$p['down_kbps']}/{$p['up_kbps']}"] = (int)$p['id'];
+            $svc = $this->db->prepare('UPDATE onus SET olt_vlan=?, olt_gemport=?, olt_down_kbps=?, olt_up_kbps=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $initialService = $this->db->prepare('UPDATE onus SET vlan=?, gemport=?, speed_profile_id=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $svcCount = $this->db->prepare('UPDATE onus SET service_ports=? WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+            $perPon = [];
 
-            $lv =$data['optical'][$pk][$o['ont_id']] ?? null;
-            if ($lv === null && isset($sum['rx_power'])) {
-                $lv = ['rx_power' => $sum['rx_power'], 'tx_power' => $sum['tx_power'], 'olt_rx_power' => null, 'temperature' => null];
-            }
-            if ($lv) {
-                $sig->execute(array_merge([$lv['rx_power'], $lv['tx_power'], $lv['olt_rx_power'], $lv['temperature'], $now], $pos));
-            } elseif ($run !== 'online') {
-                // An offline ONU has no light: do not leave its last good level on the lists.
-                $noSig->execute($pos);
-            }
+            $seen = [];
+            $replaced = 0;
+            $stats = ['total' => 0, 'online' => 0, 'los' => 0, 'power_fail' => 0, 'other_off' => 0, 'warning' => 0, 'critical' => 0];
+            foreach ($data['onts'] as $o) {
+                $pos = [$olt['id'], $o['frame'], $o['slot'], $o['port'], $o['ont_id']];
+                $pk = "{$o['frame']}/{$o['slot']}/{$o['port']}";
+                $k = "{$pk}/{$o['ont_id']}";
+                if (isset($known[$k]) && strtoupper($known[$k]['sn']) !== strtoupper($o['sn'])) {
+                    // An ONT ID can be reused outside this application. Customer metadata belongs
+                    // to its serial, not to that physical slot; only explicit replaceSn preserves it.
+                    $this->removeOnuRows([$known[$k]['id']]);
+                    unset($known[$k]);
+                    $replaced++;
+                }
+                $sum = $data['summary'][$pk][$o['ont_id']] ?? [];
+                $run = strtolower($o['run_state']);
+                $cause = $sum['down_cause'] ?? ($data['details'][$k]['last down cause'] ?? ($run === 'online' ? '' : ($known[$k]['last_down_cause'] ?? '')));
+                $cause = $cause === '-' ? '' : $cause;
+                $group = strtolower($o['control_flag']) === 'deactivated' ? 'disabled' : Huawei::downCategory($run, $cause);
 
-            $idOf->execute($pos);
-            $row = $idOf->fetch();
-            $was = $known[$k] ?? null;
-            if ($row && $was && $was['status_group'] !== '' && $was['status_group'] !== $group) {
-                $event->execute([$row['id'], $group, $run === 'online' ? '' : $cause, $now]);
-            }
-            if ($row && $lv && $lv['rx_power'] !== null && (!$row['history_at'] || strtotime($now) - strtotime($row['history_at']) >= self::HISTORY_EVERY - 30)) {
-                $hist->execute([$row['id'], $lv['rx_power'], $lv['olt_rx_power'], $now]);
-                $histAt->execute([$now, $row['id']]);
-            }
+                $up->execute(array_merge($pos, [$o['sn'], $o['description'], $o['control_flag'], $run, $o['config_state'], $o['match_state'], $group, $now]));
+                $more->execute(array_merge([$sum['model'] ?? '', $sum['model'] ?? '', $sum['distance_m'] ?? null, $run === 'online' ? '' : $cause,
+                    $sum['last_up'] ?? null, $sum['last_down'] ?? null], $pos));
+                $seen[$k] = true;
+                if ($sp = $service[$k] ?? null) {
+                    $down = $info['traffic'][$sp['down_table']]['cir'] ?? null;
+                    $upk = $info['traffic'][$sp['up_table']]['cir'] ?? null;
+                    $svc->execute(array_merge([$sp['vlan'], $sp['gemport'], $down, $upk], $pos));
+                    if (!isset($known[$k])) $initialService->execute(array_merge([$sp['vlan'], $sp['gemport'], $profileByRate["{$down}/{$upk}"] ?? null], $pos));
+                } else {
+                    $svc->execute(array_merge([null, null, null, null], $pos));
+                }
+                // Only trusted when the OLT listed service ports at all: an unparsed table must not flag every ONU.
+                $svcCount->execute(array_merge([$serviceCount[$k] ?? 0], $pos));
+                $perPon[$pk]['total'] = ($perPon[$pk]['total'] ?? 0) + 1;
+                $perPon[$pk]['online'] = ($perPon[$pk]['online'] ?? 0) + ($group === 'online' ? 1 : 0);
 
-            $stats['total']++;
-            if ($group === 'online') $stats['online']++;
-            elseif ($group === 'los') $stats['los']++;
-            elseif ($group === 'power_fail') $stats['power_fail']++;
-            else $stats['other_off']++;
-            $rx = $lv['rx_power'] ?? null;
-            if ($rx !== null) {
-                if ($rx < self::SIGNAL_CRITICAL || $rx > self::SIGNAL_HOT) $stats['critical']++;
-                elseif ($rx < self::SIGNAL_WARNING) $stats['warning']++;
-            }
-        }
+                $lv = $data['optical'][$pk][$o['ont_id']] ?? null;
+                if ($lv === null && isset($sum['rx_power'])) {
+                    $lv = ['rx_power' => $sum['rx_power'], 'tx_power' => $sum['tx_power'], 'olt_rx_power' => null, 'temperature' => null];
+                }
+                if ($run !== 'online') $lv = null;
+                if ($lv) {
+                    $sig->execute(array_merge([$lv['rx_power'], $lv['tx_power'], $lv['olt_rx_power'], $lv['temperature'], $now], $pos));
+                } elseif ($run !== 'online' || $data['with_signal']) {
+                    // An offline ONU has no light: do not leave its last good level on the lists.
+                    $noSig->execute($pos);
+                }
 
-        // ONTs deleted on the OLT itself leave the list too. An empty read is never trusted for this:
-        // output we failed to parse must not wipe the list.
-        $removed = 0;
-        if ($seen) {
-            $del = $this->db->prepare('DELETE FROM onus WHERE id=?');
-            foreach ($known as $k => $r) {
-                if (empty($seen[$k])) {
-                    $del->execute([$r['id']]);
-                    $removed++;
+                $idOf->execute($pos);
+                $row = $idOf->fetch();
+                $was = $known[$k] ?? null;
+                if ($row && $was && $was['status_group'] !== '' && $was['status_group'] !== $group) {
+                    $event->execute([$row['id'], $group, $run === 'online' ? '' : $cause, $now]);
+                }
+                if ($row && $lv && $lv['rx_power'] !== null && (!$row['history_at'] || strtotime($now) - strtotime($row['history_at']) >= self::HISTORY_EVERY - 30)) {
+                    $hist->execute([$row['id'], $lv['rx_power'], $lv['olt_rx_power'], $now]);
+                    $histAt->execute([$now, $row['id']]);
+                }
+
+                $stats['total']++;
+                if ($group === 'online') $stats['online']++;
+                elseif ($group === 'los') $stats['los']++;
+                elseif ($group === 'power_fail') $stats['power_fail']++;
+                else $stats['other_off']++;
+                $rx = $lv['rx_power'] ?? null;
+                if ($rx !== null) {
+                    if ($rx < self::SIGNAL_CRITICAL || $rx > self::SIGNAL_HOT) $stats['critical']++;
+                    elseif ($rx < self::SIGNAL_WARNING) $stats['warning']++;
                 }
             }
+
+            // ONTs deleted on the OLT itself leave the list too. An empty read is never trusted for this:
+            // output we failed to parse must not wipe the list.
+            $removed = $replaced;
+            if ($data['inventory_complete']) {
+                $removedIds = [];
+                foreach ($known as $k => $r) {
+                    if (empty($seen[$k])) {
+                        $removedIds[] = $r['id'];
+                    }
+                }
+                $this->removeOnuRows($removedIds);
+                $removed += count($removedIds);
+            }
+            $this->db->prepare('INSERT INTO olt_stats (olt_id, at, total, online, los, power_fail, other_off, warning, critical, waiting) VALUES (?,?,?,?,?,?,?,?,?,?)')
+                ->execute([$olt['id'], $now, $stats['total'], $stats['online'], $stats['los'], $stats['power_fail'], $stats['other_off'], $stats['warning'], $stats['critical'], count($data['waiting'])]);
+            $ponStat = $this->db->prepare('INSERT INTO pon_stats (olt_id, pon, at, total, online) VALUES (?,?,?,?,?)');
+            foreach ($perPon as $pon => $p) $ponStat->execute([$olt['id'], $pon, $now, $p['total'], $p['online']]);
+            $this->checkEvents($olt, $info);
+            $result = ['onus' => $stats['total'], 'online' => $stats['online'], 'removed' => $removed, 'model' => $info['model'], 'waiting' => count($data['waiting'])];
+            $this->db->commit();
+            return $result;
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
         }
-        $this->db->prepare('INSERT INTO olt_stats (olt_id, at, total, online, los, power_fail, other_off, warning, critical, waiting) VALUES (?,?,?,?,?,?,?,?,?,?)')
-            ->execute([$olt['id'], $now, $stats['total'], $stats['online'], $stats['los'], $stats['power_fail'], $stats['other_off'], $stats['warning'], $stats['critical'], count($data['waiting'])]);
-        $ponStat = $this->db->prepare('INSERT INTO pon_stats (olt_id, pon, at, total, online) VALUES (?,?,?,?,?)');
-        foreach ($perPon as $pon => $p) $ponStat->execute([$olt['id'], $pon, $now, $p['total'], $p['online']]);
-        $this->checkEvents($olt, $info);
-        return ['onus' => $stats['total'], 'online' => $stats['online'], 'removed' => $removed, 'model' => $info['model'], 'waiting' => count($data['waiting'])];
     }
 
     /** History older than this is not kept: signal and network points 30 days, status changes 180 days. */
     public function prune(): void
     {
+        $this->db->exec('DELETE FROM onu_ethernet_samples WHERE at < NOW() - INTERVAL 30 DAY');
         $this->db->exec('DELETE FROM snmp_samples WHERE at < NOW() - INTERVAL 30 DAY');
         $this->db->exec('DELETE FROM signal_history WHERE at < NOW() - INTERVAL 30 DAY');
         $this->db->exec('DELETE FROM olt_stats WHERE at < NOW() - INTERVAL 30 DAY');
@@ -772,7 +867,7 @@ class OltManager
         $st = $this->db->prepare('SELECT idx FROM olt_traffic_tables WHERE olt_id=? AND kbps=?');
         $st->execute([$olt['id'], $kbps]);
         $idx = $st->fetchColumn();
-        if ($idx !== false && isset($tables[(int)$idx]) && $tables[(int)$idx]['cir'] === $kbps) {
+        if ($idx !== false && isset($tables[(int)$idx]) && $tables[(int)$idx]['cir'] === $kbps && $tables[(int)$idx]['pir'] === $kbps) {
             return (int)$idx;
         }
         $idx = null;
@@ -816,12 +911,13 @@ class OltManager
         $sn = Huawei::normaliseSn((string)($in['sn'] ?? ''));
         if ($sn === null) throw new InvalidArgumentException('That serial number does not look right.');
         $frame = (int)($in['frame'] ?? 0); $slot = (int)($in['slot'] ?? -1); $port = (int)($in['port'] ?? -1);
-        if ($slot < 0 || $slot > 21 || $port < 0 || $port > 15) throw new InvalidArgumentException('Choose the board and PON port.');
+        if ($frame < 0 || $frame > 255 || $slot < 0 || $slot > 21 || $port < 0 || $port > 15) throw new InvalidArgumentException('Choose the board and PON port.');
         $line = (int)($in['line_profile'] ?? -1); $srv = (int)($in['srv_profile'] ?? -1);
-        if ($line < 0 || $srv < 0) throw new InvalidArgumentException('Choose a line profile and a service profile.');
+        if ($line < 0 || $line > 65535 || $srv < 0 || $srv > 65535) throw new InvalidArgumentException('Choose a line profile and a service profile.');
         $vlan = isset($in['vlan']) && $in['vlan'] !== '' ? (int)$in['vlan'] : null;
         if ($vlan !== null && ($vlan < 1 || $vlan > 4094)) throw new InvalidArgumentException('The VLAN must be between 1 and 4094.');
         $gem = (int)($in['gemport'] ?? 1);
+        if ($gem < 1 || $gem > 4095) throw new InvalidArgumentException('The GEM port must be between 1 and 4095.');
         $desc = self::cleanDesc((string)($in['description'] ?? ''));
         if ($desc === '') $desc = 'onu_' . substr($sn, -8);
         $mode = ($in['mode'] ?? 'bridge') === 'router' ? 'router' : 'bridge';
@@ -829,41 +925,50 @@ class OltManager
         $speed = !empty($meta['speed_profile_id']) ? $this->speedProfile($meta['speed_profile_id']) : null;
         if ($speed && $vlan === null) throw new InvalidArgumentException('A speed limit needs an internet VLAN.');
 
-        $ontId = $this->act($olt, 'onu.authorize', "{$frame}/{$slot}/{$port} {$sn}", function (Huawei $s) use ($olt, $frame, $slot, $port, $sn, $line, $srv, $desc, $vlan, $gem, $mode, $speed) {
+        return $this->act($olt, 'onu.authorize', "{$frame}/{$slot}/{$port} {$sn}", function (Huawei $s) use ($olt, $frame, $slot, $port, $sn, $line, $srv, $desc, $vlan, $gem, $mode, $speed, $in, $meta) {
             $tables = null;
             [$upT, $downT] = $this->speedTables($s, $olt, $speed, $tables);
-            return $s->authorize($frame, $slot, $port, $sn, $line, $srv, $desc, $vlan, $gem, $mode === 'bridge', $upT, $downT);
+            $ontId = $s->authorize($frame, $slot, $port, $sn, $line, $srv, $desc, $vlan, $gem, $mode === 'bridge', $upT, $downT);
+            $this->db->beginTransaction();
+            try {
+                $now = self::now();
+                $this->db->prepare("INSERT INTO onus (olt_id, frame, slot, port, ont_id, sn, description, run_state, vlan, gemport, mode, line_profile, srv_profile, model, authorized_at, updated_at)
+                    VALUES (?,?,?,?,?,?,?,'',?,?,?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE sn=VALUES(sn), description=VALUES(description), vlan=VALUES(vlan), gemport=VALUES(gemport), mode=VALUES(mode),
+                        line_profile=VALUES(line_profile), srv_profile=VALUES(srv_profile), model=VALUES(model), authorized_at=VALUES(authorized_at), updated_at=VALUES(updated_at)")
+                    ->execute([$olt['id'], $frame, $slot, $port, $ontId, $sn, $desc, $vlan, $gem, $mode, $line, $srv,
+                        mb_substr((string)($in['model'] ?? ''), 0, 60), $now, $now]);
+                $st = $this->db->prepare('SELECT id FROM onus WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
+                $st->execute([$olt['id'], $frame, $slot, $port, $ontId]);
+                $id = (int)$st->fetchColumn();
+                $this->saveMetaRow($id, $meta);
+                $this->db->prepare('DELETE FROM pending_onus WHERE sn=?')->execute([$sn]);
+                // It no longer waits for authorization.
+                $cache = $this->waiting((int)$olt['id'])[(int)$olt['id']] ?? null;
+                if ($cache) {
+                    $left = array_values(array_filter($cache['onus'], function ($u) use ($sn) { return $u['sn'] !== $sn; }));
+                    $this->db->prepare('UPDATE autofind_cache SET onus_json=? WHERE olt_id=?')->execute([json_encode($left), $olt['id']]);
+                }
+                $this->db->commit();
+                return ['ont_id' => $ontId, 'id' => $id];
+            } catch (Throwable $e) {
+                if ($this->db->inTransaction()) $this->db->rollBack();
+                try { $s->delete($frame,$slot,$port,$ontId); }
+                catch (Throwable $rollback) { throw new OltError('The ONU was authorized but could not be saved, and device rollback failed. Inspect the OLT: ' . $rollback->getMessage(),0,$e); }
+                throw new OltError('Saving the authorization failed; the new ONU was removed from the OLT. ' . $e->getMessage(),0,$e);
+            }
         });
-        $now = self::now();
-        $this->db->prepare("INSERT INTO onus (olt_id, frame, slot, port, ont_id, sn, description, run_state, vlan, gemport, mode, line_profile, srv_profile, model, authorized_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,'',?,?,?,?,?,?,?,?)
-            ON DUPLICATE KEY UPDATE sn=VALUES(sn), description=VALUES(description), vlan=VALUES(vlan), gemport=VALUES(gemport), mode=VALUES(mode),
-                line_profile=VALUES(line_profile), srv_profile=VALUES(srv_profile), model=VALUES(model), authorized_at=VALUES(authorized_at), updated_at=VALUES(updated_at)")
-            ->execute([$olt['id'], $frame, $slot, $port, $ontId, $sn, $desc, $vlan, $gem, $mode, $line, $srv,
-                mb_substr((string)($in['model'] ?? ''), 0, 60), $now, $now]);
-        $st = $this->db->prepare('SELECT id FROM onus WHERE olt_id=? AND frame=? AND slot=? AND port=? AND ont_id=?');
-        $st->execute([$olt['id'], $frame, $slot, $port, $ontId]);
-        $id = (int)$st->fetchColumn();
-        $this->saveMetaRow($id, $meta);
-        $this->db->prepare('DELETE FROM pending_onus WHERE sn=?')->execute([$sn]);
-        // It no longer waits for authorization.
-        $cache = $this->waiting((int)$olt['id'])[(int)$olt['id']] ?? null;
-        if ($cache) {
-            $left = array_values(array_filter($cache['onus'], function ($u) use ($sn) { return $u['sn'] !== $sn; }));
-            $this->db->prepare('UPDATE autofind_cache SET onus_json=? WHERE olt_id=?')->execute([json_encode($left), $olt['id']]);
-        }
-        return ['ont_id' => $ontId, 'id' => $id];
     }
 
     public function autofind(int $oltId): array
     {
         $olt = $this->olt($oltId);
         if (!$olt) throw new InvalidArgumentException('OLT not found.');
-        $found = $this->act($olt, 'onu.autofind', $olt['name'], function (Huawei $s) {
-            return $s->autofind();
+        return $this->act($olt, 'onu.autofind', $olt['name'], function (Huawei $s) use ($oltId) {
+            $found = $s->autofind();
+            $this->db->prepare('REPLACE INTO autofind_cache (olt_id, onus_json, at) VALUES (?,?,?)')->execute([$oltId, json_encode($found), self::now()]);
+            return $found;
         });
-        $this->db->prepare('REPLACE INTO autofind_cache (olt_id, onus_json, at) VALUES (?,?,?)')->execute([$oltId, json_encode($found), self::now()]);
-        return $found;
     }
 
     private function onuAndOlt(int $id): array
@@ -873,33 +978,66 @@ class OltManager
         return [$onu, $this->olt((int)$onu['olt_id']), "{$onu['frame']}/{$onu['slot']}/{$onu['port']}/{$onu['ont_id']}"];
     }
 
+    public function onuEthernetStats(int $id, int $ethPort = 1): array
+    {
+        [$onu, $olt, $pos] = $this->onuAndOlt($id);
+        return $this->act($olt, 'onu.ethernet_stats', $pos . ' eth ' . $ethPort, function (Huawei $s) use ($onu, $ethPort) {
+            $this->assertOnuIdentity($s, $onu);
+            return $s->ontEthernetStats((int)$onu['frame'], (int)$onu['slot'], (int)$onu['port'], (int)$onu['ont_id'], $ethPort)
+                + ['sampled_at' => self::now(), 'onu_id' => (int)$onu['id']];
+        });
+    }
+
+    public function onuMacAddresses(int $id): array
+    {
+        [$onu, $olt, $pos] = $this->onuAndOlt($id);
+        return $this->act($olt, 'onu.mac_addresses', $pos, function (Huawei $s) use ($onu) {
+            $this->assertOnuIdentity($s, $onu);
+            return $s->macAddresses((int)$onu['frame'], (int)$onu['slot'], (int)$onu['port'], (int)$onu['ont_id']);
+        });
+    }
+
+    /** Reject commands against a different ONU which reused the stored physical position. */
+    private function assertOnuIdentity(Huawei $s, array $onu): void
+    {
+        $detail = $s->ontDetail($onu['frame'],$onu['slot'],$onu['port'],$onu['ont_id']);
+        if (strtoupper(substr($detail['sn'] ?? '',0,16)) !== strtoupper($onu['sn'])) throw new OltError('The serial number at this position changed. Refresh the OLT before changing this ONU.');
+    }
+
     /** Read one ONU live and update its stored state. Returns [onu row, detail key values]. */
     public function liveOnu(int $id): array
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
-        $live = $this->act($olt, 'onu.status', $pos, function (Huawei $s) use ($onu) {
-            return [
-                'detail'  => $s->ontDetail($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']),
-                'optical' => $s->ontOptical($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']),
-            ];
+        return $this->act($olt, 'onu.status', $pos, function (Huawei $s) use ($id) {
+            $onu = $this->onu($id);
+            if (!$onu) throw new InvalidArgumentException('ONU not found.');
+            $d = $s->ontDetail($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
+            if (strtoupper(substr($d['sn'] ?? '',0,16)) !== strtoupper($onu['sn'])) throw new OltError('The serial number at this position changed. Refresh the OLT before reading this ONU.');
+            $lv = $s->ontOptical($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
+            $run = strtolower($d['run state']);
+            $cause = $run === 'online' ? '' : (string)($d['last down cause'] ?? $onu['last_down_cause']);
+            $cause = trim($cause, '-') === '' ? '' : $cause;
+            $control = Huawei::controlFlag($d['control flag']);
+            $group = $control === 'deactivated' ? 'disabled' : Huawei::downCategory($run, $cause);
+            if ($run !== 'online') $lv = ['rx_power'=>null,'tx_power'=>null,'olt_rx_power'=>null,'temperature'=>null];
+            $time = function ($value) { if (!$value || $value === '-') return null; try { return (new DateTimeImmutable($value))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s'); } catch (Throwable $e) { return null; } };
+            $distance = $d['ont distance(m)'] ?? $d['distance(m)'] ?? null;
+            $this->db->beginTransaction();
+            try {
+                if ($onu['status_group'] !== '' && $onu['status_group'] !== $group) $this->db->prepare('INSERT INTO status_events (onu_id,state,cause,at) VALUES (?,?,?,?)')->execute([$id,$group,$cause,self::now()]);
+                $this->db->prepare('UPDATE onus SET run_state=?, control_flag=?, config_state=?, match_state=?, status_group=?, last_down_cause=?, rx_power=?, tx_power=?, olt_rx_power=?, temperature=?, signal_at=?, updated_at=?, last_up_at=COALESCE(?,last_up_at), last_down_at=COALESCE(?,last_down_at), distance_m=COALESCE(?,distance_m) WHERE id=?')
+                    ->execute([$run,$control,$d['config state'] ?? $onu['config_state'],$d['match state'] ?? $onu['match_state'],$group,$cause,$lv['rx_power'],$lv['tx_power'],$lv['olt_rx_power'],$lv['temperature'],self::now(),self::now(),$time($d['last up time'] ?? null),$time($d['last down time'] ?? null),is_numeric($distance)?(int)$distance:null,$id]);
+                $this->db->commit();
+            } catch (Throwable $e) { if ($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
+            return [$this->onu($id), $d];
         });
-        $d = $live['detail'];
-        $lv = $live['optical'];
-        $run = strtolower($d['run state'] ?? $onu['run_state']);
-        $cause = $run === 'online' ? '' : (string)($d['last down cause'] ?? $onu['last_down_cause']);
-        $group = strtolower($d['control flag'] ?? $onu['control_flag']) === 'deactivated' ? 'disabled' : Huawei::downCategory($run, $cause);
-        if ($onu['status_group'] !== '' && $onu['status_group'] !== $group) {
-            $this->db->prepare('INSERT INTO status_events (onu_id, state, cause, at) VALUES (?,?,?,?)')->execute([$onu['id'], $group, $cause, self::now()]);
-        }
-        $this->db->prepare('UPDATE onus SET run_state=?, status_group=?, last_down_cause=?, rx_power=?, tx_power=?, olt_rx_power=?, temperature=?, signal_at=?, updated_at=? WHERE id=?')
-            ->execute([$run, $group, $cause, $lv['rx_power'], $lv['tx_power'], $lv['olt_rx_power'], $lv['temperature'], self::now(), self::now(), $onu['id']]);
-        return [array_merge($onu, $lv, ['run_state' => $run, 'status_group' => $group, 'last_down_cause' => $cause]), $d];
     }
 
     public function reboot(int $id): void
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
         $this->act($olt, 'onu.reboot', $pos, function (Huawei $s) use ($onu) {
+            $this->assertOnuIdentity($s, $onu);
             $s->reboot($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
         });
     }
@@ -907,25 +1045,47 @@ class OltManager
     public function deleteOnu(int $id): int
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
-        $ports = $this->act($olt, 'onu.delete', "{$pos} {$onu['sn']}", function (Huawei $s) use ($onu) {
-            return $s->delete($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
+        return $this->act($olt, 'onu.delete', $pos . ' ' . $onu['sn'], function (Huawei $s) use ($id) {
+            $onu = $this->onu($id);
+            if (!$onu) throw new InvalidArgumentException('ONU not found.');
+            $this->assertOnuIdentity($s, $onu);
+            $ports = $s->delete($onu['frame'],$onu['slot'],$onu['port'],$onu['ont_id']);
+            $this->db->beginTransaction();
+            try { $this->removeOnuRows([$id]); $this->db->commit(); }
+            catch (Throwable $e) { if ($this->db->inTransaction()) $this->db->rollBack(); throw new OltError('The OLT removed the ONU, but its saved row could not be removed. Refresh the OLT to reconcile it.',0,$e); }
+            return $ports;
         });
-        $this->db->prepare('DELETE FROM onus WHERE id=?')->execute([$onu['id']]);
-        return $ports;
     }
 
-    public function describe(int $id, string $description, ?string $customerRef): string
+    public function describe(int $id, string $description, ?string $customerRef, array $metadata = []): string
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
         $desc = self::cleanDesc($description);
         if ($desc === '') throw new InvalidArgumentException('Enter a description.');
+        unset($metadata['speed_profile_id']);
+        $meta = $this->metaFromInput($metadata);
+        $meta['customer_ref'] = mb_substr($customerRef ?? $onu['customer_ref'], 0, 100);
         if ($desc !== $onu['description']) {
-            $this->act($olt, 'onu.describe', $pos, function (Huawei $s) use ($onu, $desc) {
+            $this->act($olt, 'onu.describe', $pos, function (Huawei $s) use ($id, $desc, $meta) {
+                $onu = $this->onu($id);
+                if (!$onu) throw new InvalidArgumentException('ONU not found.');
+                $this->assertOnuIdentity($s, $onu);
                 $s->setDescription($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id'], $desc);
+                $this->db->beginTransaction();
+                try {
+                    $this->db->prepare('UPDATE onus SET description=?, updated_at=? WHERE id=?')->execute([$desc, self::now(), $id]);
+                    $this->saveMetaRow($id, $meta);
+                    $this->db->commit();
+                } catch (Throwable $failure) {
+                    if ($this->db->inTransaction()) $this->db->rollBack();
+                    try { $s->setDescription($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id'], $onu['description']); }
+                    catch (Throwable $rollback) { throw new OltError('The new name could not be saved and the OLT name could not be restored. Refresh this ONU before retrying: ' . $rollback->getMessage(), 0, $failure); }
+                    throw new OltError('The new name and details could not be saved; the previous OLT name was restored.', 0, $failure);
+                }
             });
+        } else {
+            $this->saveMetaRow($id, $meta);
         }
-        $this->db->prepare('UPDATE onus SET description=?, customer_ref=?, updated_at=? WHERE id=?')
-            ->execute([$desc, mb_substr($customerRef ?? $onu['customer_ref'], 0, 100), self::now(), $onu['id']]);
         return $desc;
     }
 
@@ -941,31 +1101,45 @@ class OltManager
     public function setService(int $id, array $in): void
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
-        $vlan = (int)($in['vlan'] ?? 0);
-        if ($vlan < 1 || $vlan > 4094) throw new InvalidArgumentException('The VLAN must be between 1 and 4094.');
-        $mode = ($in['mode'] ?? ($onu['mode'] ?: 'bridge')) === 'router' ? 'router' : 'bridge';
-        $gem = isset($in['gemport']) && $in['gemport'] !== '' ? (int)$in['gemport'] : (int)($onu['gemport'] ?: 1);
-        $meta = $this->metaFromInput(['speed_profile_id' => $in['speed_profile_id'] ?? 0]);
-        $speed = $meta['speed_profile_id'] ? $this->speedProfile($meta['speed_profile_id']) : null;
-        $this->act($olt, 'onu.service', $pos . " vlan {$vlan}" . ($speed ? " {$speed['name']}" : ''), function (Huawei $s) use ($olt, $onu, $vlan, $gem, $mode, $speed) {
+        $this->act($olt, 'onu.service', $pos, function (Huawei $s) use ($olt, $id, $in) {
+            $onu = $this->onu($id);
+            if (!$onu) throw new InvalidArgumentException('ONU not found.');
+            $vlan = (int)($in['vlan'] ?? $onu['vlan']);
+            if ($vlan < 1 || $vlan > 4094) throw new InvalidArgumentException('The VLAN must be between 1 and 4094.');
+            $mode = (string)($in['mode'] ?? ($onu['mode'] ?: 'bridge'));
+            if (!in_array($mode, ['bridge','router'], true)) throw new InvalidArgumentException('Choose bridge or router mode.');
+            if ($onu['mode'] !== '' && $mode !== $onu['mode']) throw new InvalidArgumentException('Changing ONU routing mode requires its WAN and LAN provisioning, which this OLT service editor does not configure. Change those settings on the ONU or a compatible ACS; VLAN and speed can be edited here without changing mode.');
+            $gem = isset($in['gemport']) && $in['gemport'] !== '' ? (int)$in['gemport'] : (int)($onu['gemport'] ?: 1);
+            if ($gem < 1 || $gem > 4095) throw new InvalidArgumentException('The GEM port must be between 1 and 4095.');
+            $meta = $this->metaFromInput(['speed_profile_id' => $in['speed_profile_id'] ?? $onu['speed_profile_id'] ?? 0]);
+            $speed = $meta['speed_profile_id'] ? $this->speedProfile($meta['speed_profile_id']) : null;
+            $this->assertOnuIdentity($s, $onu);
             $tables = null;
-            [$upT, $downT] = $this->speedTables($s, $olt, $speed, $tables);
-            $s->setService($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id'], $vlan, $gem, $mode === 'bridge', $upT, $downT);
+            [$upT,$downT] = $this->speedTables($s,$olt,$speed,$tables);
+            $s->setService($onu['frame'],$onu['slot'],$onu['port'],$onu['ont_id'],$vlan,$gem,$mode === 'bridge',$upT,$downT);
+            try {
+                $this->db->prepare('UPDATE onus SET vlan=?, gemport=?, mode=?, speed_profile_id=?, olt_vlan=?, olt_gemport=?, olt_down_kbps=?, olt_up_kbps=?, service_ports=1, updated_at=? WHERE id=?')
+                    ->execute([$vlan,$gem,$mode,$meta['speed_profile_id'],$vlan,$gem,$speed['down_kbps'] ?? null,$speed['up_kbps'] ?? null,self::now(),$id]);
+            } catch (Throwable $failure) { throw new OltError('The service changed on the OLT but the saved settings could not be updated. Refresh and reconcile this ONU before retrying.', 0, $failure); }
         });
-        $this->db->prepare('UPDATE onus SET vlan=?, gemport=?, mode=?, speed_profile_id=?, updated_at=? WHERE id=?')
-            ->execute([$vlan, $gem, $mode, $meta['speed_profile_id'], self::now(), $onu['id']]);
     }
 
     public function setActive(int $id, bool $active): void
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
-        $this->act($olt, $active ? 'onu.enable' : 'onu.disable', $pos, function (Huawei $s) use ($onu, $active) {
-            $s->setActive($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id'], $active);
+        $this->act($olt,$active ? 'onu.enable' : 'onu.disable',$pos,function (Huawei $s) use ($id,$active) {
+            $onu = $this->onu($id);
+            if (!$onu) throw new InvalidArgumentException('ONU not found.');
+            $this->assertOnuIdentity($s,$onu);
+            $s->setActive($onu['frame'],$onu['slot'],$onu['port'],$onu['ont_id'],$active);
+            $group = $active ? Huawei::downCategory($onu['run_state'],$onu['last_down_cause']) : 'disabled';
+            $this->db->beginTransaction();
+            try {
+                $this->db->prepare('INSERT INTO status_events (onu_id,state,cause,at) VALUES (?,?,?,?)')->execute([$id,$group,$active?'enabled':'disabled',self::now()]);
+                $this->db->prepare('UPDATE onus SET control_flag=?,status_group=?,updated_at=? WHERE id=?')->execute([$active?'active':'deactivated',$group,self::now(),$id]);
+                $this->db->commit();
+            } catch (Throwable $e) { if ($this->db->inTransaction()) $this->db->rollBack(); throw new OltError('The OLT state changed, but saving it failed. Refresh this ONU before retrying.',0,$e); }
         });
-        $group = $active ? Huawei::downCategory($onu['run_state'], $onu['last_down_cause']) : 'disabled';
-        $this->db->prepare('INSERT INTO status_events (onu_id, state, cause, at) VALUES (?,?,?,?)')->execute([$onu['id'], $group, $active ? 'enabled' : 'disabled', self::now()]);
-        $this->db->prepare("UPDATE onus SET control_flag=?, status_group=?, updated_at=? WHERE id=?")
-            ->execute([$active ? 'active' : 'deactivated', $group, self::now(), $onu['id']]);
     }
 
     /** Swap the customer's broken ONU for a new one: same place, profiles, VLAN and speed, new serial. */
@@ -979,9 +1153,10 @@ class OltManager
         $st->execute([$sn, $onu['id']]);
         if ((int)$st->fetchColumn()) throw new InvalidArgumentException('Another authorized ONU already has that serial number.');
         $this->act($olt, 'onu.replace_sn', "{$pos} {$onu['sn']} to {$sn}", function (Huawei $s) use ($onu, $sn) {
+            $this->assertOnuIdentity($s, $onu);
             $s->replaceSn($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id'], $sn);
+            $this->db->prepare("UPDATE onus SET sn=?, model='', updated_at=? WHERE id=?")->execute([$sn, self::now(), $onu['id']]);
         });
-        $this->db->prepare("UPDATE onus SET sn=?, model='', updated_at=? WHERE id=?")->execute([$sn, self::now(), $onu['id']]);
         return $sn;
     }
 
@@ -993,57 +1168,41 @@ class OltManager
      */
     public function bulk(array $ids, string $action, int $param = 0): array
     {
-        if (!in_array($action, self::BULK_ACTIONS, true)) throw new InvalidArgumentException('Unknown action.');
-        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (!in_array($action,self::BULK_ACTIONS,true)) throw new InvalidArgumentException('Unknown action.');
+        $ids = array_values(array_unique(array_map('intval',$ids)));
         if (!$ids) throw new InvalidArgumentException('Tick the ONUs first.');
-        if (count($ids) > 500) throw new InvalidArgumentException('At most 500 ONUs at a time.');
-        $speed = null;
-        if ($action === 'speed') {
-            $speed = $this->speedProfile($param);
-            if (!$speed) throw new InvalidArgumentException('Choose a speed profile.');
+        if (count($ids)>500) throw new InvalidArgumentException('At most 500 ONUs at a time.');
+        if ($action === 'speed' && !$this->speedProfile($param)) throw new InvalidArgumentException('Choose a speed profile.');
+        // Reuse the verified single-ONU workflows in one locked session per OLT.
+        // Partial success is explicit and each requested ID receives exactly one outcome.
+        $done = 0; $failed = []; $results = []; $groups = [];
+        foreach ($ids as $id) {
+            $onu = $id > 0 ? $this->onu($id) : null;
+            if (!$onu) { $results[$id] = ['id'=>$id,'ok'=>false,'error'=>'ONU not found.']; continue; }
+            $groups[(int)$onu['olt_id']][] = $id;
         }
-        $st = $this->db->prepare(self::ONU_SELECT . ' WHERE u.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
-        $st->execute($ids);
-        $byOlt = [];
-        foreach ($st->fetchAll() as $u) $byOlt[(int)$u['olt_id']][] = $u;
-
-        $done = 0;
-        $failed = [];
-        foreach ($byOlt as $oltId => $onus) {
-            $olt = $this->olt($oltId);
-            $okIds = [];
+        foreach ($groups as $oltId => $groupIds) {
             try {
-                $this->withOlt($olt, function (Huawei $s) use ($olt, $onus, $action, $speed, &$okIds, &$failed) {
-                    $tables = null;
-                    foreach ($onus as $u) {
-                        $where = "{$u['description']} ({$u['frame']}/{$u['slot']}/{$u['port']} ID {$u['ont_id']})";
+                $olt = $this->olt($oltId);
+                if (!$olt) throw new InvalidArgumentException('OLT not found.');
+                $this->withOlt($olt,function (Huawei $s) use ($groupIds,$action,$param,&$results) {
+                    foreach ($groupIds as $id) {
                         try {
-                            if ($action === 'reboot') $s->reboot($u['frame'], $u['slot'], $u['port'], $u['ont_id']);
-                            elseif ($action === 'disable' || $action === 'enable') $s->setActive($u['frame'], $u['slot'], $u['port'], $u['ont_id'], $action === 'enable');
-                            else {
-                                if (!$u['vlan']) throw new OltError('no internet VLAN saved for it, set the VLAN on its page first');
-                                [$upT, $downT] = $this->speedTables($s, $olt, $speed, $tables);
-                                $s->setService($u['frame'], $u['slot'], $u['port'], $u['ont_id'], (int)$u['vlan'], (int)($u['gemport'] ?: 1), $u['mode'] !== 'router', $upT, $downT);
-                            }
-                            $okIds[] = (int)$u['id'];
-                        } catch (OltError $e) {
-                            $failed[] = "{$where}: {$e->getMessage()}";
-                        }
+                            if ($action === 'reboot') $this->reboot($id);
+                            elseif ($action === 'enable' || $action === 'disable') $this->setActive($id,$action === 'enable');
+                            else $this->setService($id,['speed_profile_id'=>$param]);
+                            $results[$id] = ['id'=>$id,'ok'=>true];
+                        } catch (Throwable $e) { $results[$id] = ['id'=>$id,'ok'=>false,'error'=>$e->getMessage()]; }
                     }
                 });
             } catch (Throwable $e) {
-                foreach ($onus as $u) $failed[] = "{$u['description']}: {$e->getMessage()}";
+                foreach ($groupIds as $id) if (!isset($results[$id])) $results[$id] = ['id'=>$id,'ok'=>false,'error'=>$e->getMessage()];
             }
-            $this->log($oltId, "onu.bulk_{$action}", count($okIds) . ' of ' . count($onus) . ' ONUs', count($okIds) === count($onus), count($okIds) === count($onus) ? 'ok' : implode('; ', array_slice($failed, -5)));
-            if ($okIds) {
-                $in = implode(',', $okIds);
-                if ($action === 'disable') $this->db->exec("UPDATE onus SET control_flag='deactivated', status_group='disabled' WHERE id IN ({$in})");
-                if ($action === 'enable') $this->db->exec("UPDATE onus SET control_flag='active', status_group=IF(run_state='online','online','other') WHERE id IN ({$in})");
-                if ($action === 'speed') $this->db->exec('UPDATE onus SET speed_profile_id=' . (int)$speed['id'] . " WHERE id IN ({$in})");
-            }
-            $done += count($okIds);
         }
-        return ['done' => $done, 'failed' => $failed];
+        $results = array_map(function ($id) use ($results) { return $results[$id]; },$ids);
+        foreach ($results as $result) { if ($result['ok']) $done++; else $failed[]='ONU '.$result['id'].': '.$result['error']; }
+        $this->log(null,'onu.bulk_' . $action,$done . ' of ' . count($ids) . ' ONUs',!$failed,$failed ? implode('; ',array_slice($failed,0,5)) : 'ok');
+        return ['done'=>$done,'failed'=>$failed,'results'=>$results];
     }
 
     // ----- History -----
@@ -1065,8 +1224,9 @@ class OltManager
     /** Online and offline ONUs over time across all OLTs (or one), in 10 minute steps. */
     public function networkStatus(int $hours = 24, int $oltId = 0): array
     {
-        $st = $this->db->prepare('SELECT FLOOR(UNIX_TIMESTAMP(at)/600)*600 AS t, olt_id, MAX(online) online, MAX(total - online) offline,
-            MAX(los) los, MAX(power_fail) power_fail FROM olt_stats WHERE at >= ? AND (?=0 OR olt_id=?) GROUP BY t, olt_id ORDER BY t');
+        $st = $this->db->prepare('SELECT b.t, s.olt_id, s.online, (s.total-s.online) offline, s.los, s.power_fail
+            FROM olt_stats s JOIN (SELECT FLOOR(UNIX_TIMESTAMP(at)/600)*600 t, olt_id, MAX(id) id
+                FROM olt_stats WHERE at>=? AND (?=0 OR olt_id=?) GROUP BY t,olt_id) b ON b.id=s.id ORDER BY b.t');
         $st->execute([date('Y-m-d H:i:s', time() - $hours * 3600), $oltId, $oltId]);
         $out = [];
         foreach ($st->fetchAll() as $r) {
@@ -1119,7 +1279,13 @@ class OltManager
         try {
             if ($id) {
                 $sets = implode(', ', array_map(function ($k) { return "`{$k}`=?"; }, array_keys($row)));
-                $this->db->prepare("UPDATE `{$table}` SET {$sets} WHERE id=?")->execute(array_merge(array_values($row), [$id]));
+                $update = $this->db->prepare("UPDATE `{$table}` SET {$sets} WHERE id=?");
+                $update->execute(array_merge(array_values($row), [$id]));
+                if (!$update->rowCount()) {
+                    $exists = $this->db->prepare("SELECT id FROM `{$table}` WHERE id=?");
+                    $exists->execute([$id]);
+                    if (!$exists->fetchColumn()) throw new InvalidArgumentException('That entry no longer exists. Reload the list and try again.');
+                }
                 return $id;
             }
             $cols = implode(', ', array_map(function ($k) { return "`{$k}`"; }, array_keys($row)));
@@ -1180,26 +1346,43 @@ class OltManager
     public function deleteCatalog(string $kind, int $id): void
     {
         $map = ['zone' => ['zones', 'zone_id'], 'odb' => ['odbs', 'odb_id'], 'type' => ['onu_types', 'onu_type_id'],
-            'speed' => ['speed_profiles', 'speed_profile_id'], 'sector' => ['sectors', 'sector_id']];
-        if ($kind === 'preset') {
-            $this->db->prepare('DELETE FROM auto_actions WHERE preset_id=?')->execute([$id]);
-            $this->db->prepare('UPDATE pending_onus SET preset_id=NULL WHERE preset_id=?')->execute([$id]);
-            $this->db->prepare('DELETE FROM presets WHERE id=?')->execute([$id]);
-            return;
-        }
+            'speed' => ['speed_profiles', 'speed_profile_id'], 'sector' => ['sectors', 'sector_id'], 'preset'=>['presets','preset_id']];
         if (!isset($map[$kind])) throw new InvalidArgumentException('Unknown list.');
         [$table, $col] = $map[$kind];
+        $this->db->beginTransaction();
+        try {
+        $exists = $this->db->prepare("SELECT id FROM `{$table}` WHERE id=? FOR UPDATE");
+        $exists->execute([$id]);
+        if (!$exists->fetchColumn()) throw new InvalidArgumentException('That entry no longer exists.');
+        if ($kind === 'preset') {
+            $pending = $this->db->prepare('SELECT COUNT(*) FROM pending_onus WHERE preset_id=?');
+            $pending->execute([$id]);
+            if ($count = (int)$pending->fetchColumn()) throw new InvalidArgumentException("{$count} queued ONUs depend on this preset. Assign them another preset or remove them from the queue first.");
+            $this->db->prepare('DELETE FROM auto_actions WHERE preset_id=?')->execute([$id]);
+            $this->db->prepare('UPDATE onus SET preset_id=NULL WHERE preset_id=?')->execute([$id]);
+            $this->db->prepare('DELETE FROM presets WHERE id=?')->execute([$id]);
+            $this->db->commit();
+            return;
+        }
         if ($kind === 'speed') {
             $st = $this->db->prepare('SELECT COUNT(*) FROM onus WHERE speed_profile_id=?');
             $st->execute([$id]);
             if ($n = (int)$st->fetchColumn()) throw new InvalidArgumentException("{$n} ONUs use this speed. Move them to another speed first.");
         }
         $this->db->prepare("UPDATE onus SET `{$col}`=NULL WHERE `{$col}`=?")->execute([$id]);
+        $this->db->prepare("UPDATE pending_onus SET `{$col}`=NULL WHERE `{$col}`=?")->execute([$id]);
+        // NULL selects every model in runAuto(); removing a type must not broaden its rules.
+        if ($kind === 'type') $this->db->prepare('DELETE FROM auto_actions WHERE onu_type_id=?')->execute([$id]);
         if ($kind === 'zone' || $kind === 'sector') $this->db->prepare("UPDATE odbs SET `{$col}`=NULL WHERE `{$col}`=?")->execute([$id]);
         foreach (['zone' => 'zone_id', 'sector' => 'sector_id', 'type' => 'onu_type_id', 'speed' => 'speed_profile_id'] as $k => $c) {
             if ($k === $kind) $this->db->prepare("UPDATE presets SET `{$c}`=NULL WHERE `{$c}`=?")->execute([$id]);
         }
         $this->db->prepare("DELETE FROM `{$table}` WHERE id=?")->execute([$id]);
+        $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
     }
 
     /** Remove every zone, sector, splitter, type or speed profile no ONU uses. Returns how many went. */
@@ -1209,7 +1392,18 @@ class OltManager
         if ($rows === null) throw new InvalidArgumentException('Unknown list.');
         $n = 0;
         foreach ($rows as $r) {
-            if ((int)$r['onu_count'] === 0) { $this->deleteCatalog($kind, (int)$r['id']); $n++; }
+            if ((int)$r['onu_count'] !== 0) continue;
+            $col = ['zone'=>'zone_id','sector'=>'sector_id','odb'=>'odb_id','type'=>'onu_type_id','speed'=>'speed_profile_id'][$kind];
+            $tables = ['pending_onus'];
+            if ($kind !== 'odb') $tables[] = 'presets';
+            if (in_array($kind,['zone','sector'],true)) $tables[] = 'odbs';
+            if ($kind === 'type') $tables[] = 'auto_actions';
+            foreach ($tables as $table) {
+                $st = $this->db->prepare("SELECT COUNT(*) FROM `{$table}` WHERE `{$col}`=?");
+                $st->execute([$r['id']]);
+                if ((int)$st->fetchColumn()) continue 2;
+            }
+            $this->deleteCatalog($kind, (int)$r['id']); $n++;
         }
         return $n;
     }
@@ -1253,12 +1447,19 @@ class OltManager
         $vlan = trim((string)($in['vlan'] ?? '')) === '' ? null : (int)$in['vlan'];
         if ($vlan !== null && ($vlan < 1 || $vlan > 4094)) throw new InvalidArgumentException('The VLAN must be between 1 and 4094.');
         if (!empty($meta['speed_profile_id']) && $vlan === null) throw new InvalidArgumentException('A speed limit needs an internet VLAN.');
-        $prof = function ($v) { return trim((string)$v) === '' ? null : max(0, (int)$v); };
+        $prof = function ($v) {
+            $v = trim((string)$v);
+            if ($v === '') return null;
+            if (!ctype_digit($v) || (int)$v > 8192) throw new InvalidArgumentException('Profile IDs must be between 0 and 8192.');
+            return (int)$v;
+        };
+        $gem = filter_var($in['gemport'] ?? 1, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1,'max_range'=>4095]]);
+        if ($gem === false) throw new InvalidArgumentException('The GEM port must be between 1 and 4095.');
         $row = ['name' => self::cleanName((string)($in['name'] ?? ''), 'preset'), 'mode' => ($in['mode'] ?? '') === 'router' ? 'router' : 'bridge',
             'vlan' => $vlan, 'onu_type_id' => $meta['onu_type_id'] ?? null, 'speed_profile_id' => $meta['speed_profile_id'] ?? null,
             'zone_id' => $meta['zone_id'] ?? null, 'sector_id' => $meta['sector_id'] ?? null,
             'line_profile' => $prof($in['line_profile'] ?? ''), 'srv_profile' => $prof($in['srv_profile'] ?? ''),
-            'gemport' => max(0, min(1023, (int)($in['gemport'] ?? 1)))];
+            'gemport' => $gem];
         if (!$id) $row['created_at'] = self::now();
         return $this->saveRow('presets', $id, $row);
     }
@@ -1327,7 +1528,9 @@ class OltManager
 
     public function deleteAutoAction(int $id): void
     {
-        $this->db->prepare('DELETE FROM auto_actions WHERE id=?')->execute([$id]);
+        $delete = $this->db->prepare('DELETE FROM auto_actions WHERE id=?');
+        $delete->execute([$id]);
+        if (!$delete->rowCount()) throw new InvalidArgumentException('Auto action not found.');
     }
 
     public function pendingOnus(): array
@@ -1352,17 +1555,25 @@ class OltManager
         $meta = $this->metaFromInput(array_intersect_key($in, array_flip(['zone_id', 'sector_id', 'odb_id', 'odb_port', 'address', 'customer_ref', 'onu_type_id', 'speed_profile_id', 'lat', 'lng'])));
         $num = function ($k, $max) use ($in) { $v = trim((string)($in[$k] ?? '')); if ($v === '') return null; if (!ctype_digit($v) || (int)$v > $max) throw new InvalidArgumentException("Check the {$k}."); return (int)$v; };
         $vlan = $num('vlan', 4094);
+        if ($vlan === 0) throw new InvalidArgumentException('The VLAN must be between 1 and 4094, or left empty.');
         if (!empty($meta['speed_profile_id']) && $vlan === null && !$presetId) throw new InvalidArgumentException('A speed limit needs an internet VLAN.');
         $row = array_merge(['sn' => $sn, 'olt_id' => $oltId ?: null, 'preset_id' => $presetId ?: null,
             'slot' => $num('slot', 21), 'port' => $num('port', 15), 'vlan' => $vlan, 'mode' => in_array($in['mode'] ?? '', ['router', 'bridge'], true) ? $in['mode'] : '',
             'description' => self::cleanDesc((string)($in['description'] ?? '')), 'last_error' => '', 'created_at' => self::now()], $meta);
-        $this->db->prepare('DELETE FROM pending_onus WHERE sn=?')->execute([$sn]);
-        return $this->saveRow('pending_onus', null, $row);
+        // One statement preserves the existing queued ONU if an update fails.
+        $cols = implode(',',array_map(fn($k)=>"`{$k}`",array_keys($row)));
+        $updates = implode(',',array_map(fn($k)=>"`{$k}`=VALUES(`{$k}`)",array_diff(array_keys($row),['sn','created_at'])));
+        $this->db->prepare('INSERT INTO pending_onus ('.$cols.') VALUES ('.implode(',',array_fill(0,count($row),'?')).') ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),'.$updates)->execute(array_values($row));
+        $id = (int)$this->db->lastInsertId();
+        $this->db->prepare('DELETE FROM meta WHERE k=?')->execute(['autofail_'.$sn]);
+        return $id;
     }
 
     public function deletePending(int $id): void
     {
-        $this->db->prepare('DELETE FROM pending_onus WHERE id=?')->execute([$id]);
+        $delete = $this->db->prepare('DELETE FROM pending_onus WHERE id=?');
+        $delete->execute([$id]);
+        if (!$delete->rowCount()) throw new InvalidArgumentException('Queued ONU not found.');
     }
 
     /**
@@ -1412,7 +1623,7 @@ class OltManager
                         $in = $this->presetInput($olt, $u, $this->preset((int)$rule['preset_id']));
                     }
                     $this->authorize($in);
-                    if ($p) $this->deletePending((int)$p['id']);
+                    // authorize() removes the matching pending row in the same DB transaction.
                     $result['done']++;
                 } catch (Throwable $e) {
                     $this->db->prepare('REPLACE INTO meta (k, v) VALUES (?, ?)')->execute([$failKey, (string)time()]);
@@ -1433,10 +1644,10 @@ class OltManager
     {
         $olt = $this->olt($oltId);
         if (!$olt) throw new InvalidArgumentException('OLT not found.');
-        $this->act($olt, 'olt.save', $olt['name'], function (Huawei $s) {
+        $this->act($olt, 'olt.save', $olt['name'], function (Huawei $s) use ($oltId) {
             $s->saveConfig();
+            $this->db->prepare('UPDATE olts SET saved_at=? WHERE id=?')->execute([self::now(), $oltId]);
         });
-        $this->db->prepare('UPDATE olts SET saved_at=? WHERE id=?')->execute([self::now(), $oltId]);
     }
 
     public function diag(int $oltId, string $key, array $params): string
@@ -1479,6 +1690,7 @@ class OltManager
     {
         [$onu, $olt, $pos] = $this->onuAndOlt($id);
         $this->act($olt, 'onu.restore', $pos, function (Huawei $s) use ($onu) {
+            $this->assertOnuIdentity($s, $onu);
             $s->restoreDefaults($onu['frame'], $onu['slot'], $onu['port'], $onu['ont_id']);
         });
     }
@@ -1490,19 +1702,20 @@ class OltManager
         if (!$olt) throw new InvalidArgumentException('OLT not found.');
         if ($vlan < 2 || $vlan > 4094) throw new InvalidArgumentException('The VLAN must be between 2 and 4094.');
         $desc = preg_replace('/[^A-Za-z0-9 _.-]/', '', mb_substr(trim($desc), 0, 30));
-        if (!$add) {
-            $st = $this->db->prepare('SELECT COUNT(*) FROM onus WHERE olt_id=? AND vlan=?');
-            $st->execute([$oltId, $vlan]);
-            if ($n = (int)$st->fetchColumn()) throw new InvalidArgumentException("{$n} ONUs use VLAN {$vlan}. Move them to another VLAN first.");
-        }
-        $this->act($olt, $add ? 'olt.vlan_add' : 'olt.vlan_delete', "VLAN {$vlan}", function (Huawei $s) use ($vlan, $add, $desc) {
+        $this->act($olt, $add ? 'olt.vlan_add' : 'olt.vlan_delete', "VLAN {$vlan}", function (Huawei $s) use ($oltId, $vlan, $add, $desc) {
+            if (!$add) {
+                $st = $this->db->prepare('SELECT COUNT(*) FROM onus WHERE olt_id=? AND (vlan=? OR olt_vlan=?)');
+                $st->execute([$oltId, $vlan, $vlan]);
+                if ($n = (int)$st->fetchColumn()) throw new InvalidArgumentException("{$n} ONUs use VLAN {$vlan}. Move them to another VLAN first.");
+            }
             $add ? $s->addVlan($vlan, $desc) : $s->deleteVlan($vlan);
+            $fresh = $this->olt($oltId);
+            $prof = json_decode((string)$fresh['profiles_json'], true) ?: ['line' => [], 'srv' => [], 'vlans' => []];
+            $prof['vlans'] = $s->vlans();
+            usort($prof['vlans'], function ($a, $b) { return $a['id'] <=> $b['id']; });
+            try { $this->db->prepare('UPDATE olts SET profiles_json=? WHERE id=?')->execute([json_encode($prof), $oltId]); }
+            catch (Throwable $failure) { throw new OltError('The VLAN changed on the OLT but its saved list could not be updated. Refresh the OLT before retrying.', 0, $failure); }
         });
-        $prof = json_decode((string)$olt['profiles_json'], true) ?: ['line' => [], 'srv' => [], 'vlans' => []];
-        $prof['vlans'] = array_values(array_filter($prof['vlans'] ?? [], function ($v) use ($vlan) { return (int)$v['id'] !== $vlan; }));
-        if ($add) $prof['vlans'][] = ['id' => $vlan, 'type' => 'smart', 'attribute' => 'common', 'desc' => $desc];
-        usort($prof['vlans'], function ($a, $b) { return $a['id'] <=> $b['id']; });
-        $this->db->prepare('UPDATE olts SET profiles_json=? WHERE id=?')->execute([json_encode($prof), $oltId]);
     }
 
     /** Put the VLAN, mode and speed SmartOLT has saved back on the OLT. */
@@ -1651,7 +1864,7 @@ class OltManager
         $onuId = (int)($in['onu_id'] ?? 0);
         if ($onuId && !$this->onu($onuId)) throw new InvalidArgumentException('ONU not found.');
         $start = trim((string)($in['start_at'] ?? ''));
-        $startAt = $start !== '' && strtotime($start) ? date('Y-m-d H:i:s', strtotime($start)) : null;
+        $startAt = $start !== '' ? AppTime::toStorage($start) : null;
         $this->db->prepare('INSERT INTO tickets (onu_id, subject, description, type, priority, assignee, start_at, duration_min, user, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
             ->execute([$onuId ?: null, mb_substr($subject, 0, 150), mb_substr(trim((string)($in['description'] ?? '')), 0, 5000),
                 isset(self::TICKET_TYPES[$in['type'] ?? '']) ? $in['type'] : 'support', isset(self::TICKET_PRIORITIES[$in['priority'] ?? '']) ? $in['priority'] : 'normal',
@@ -1661,6 +1874,9 @@ class OltManager
 
     public function closeTicket(int $id, bool $closed = true): void
     {
+        $exists = $this->db->prepare('SELECT id FROM tickets WHERE id=?');
+        $exists->execute([$id]);
+        if (!$exists->fetchColumn()) throw new InvalidArgumentException('Ticket not found.');
         $this->db->prepare('UPDATE tickets SET status=? WHERE id=?')->execute([$closed ? 'closed' : 'open', $id]);
     }
 
@@ -1668,10 +1884,15 @@ class OltManager
     public function authorizationsPerDay(int $days = 14): array
     {
         $out = [];
-        for ($i = $days - 1; $i >= 0; $i--) $out[date('Y-m-d', time() - $i * 86400)] = 0;
-        $st = $this->db->prepare("SELECT DATE(created_at) d, COUNT(*) n FROM actions WHERE action='onu.authorize' AND ok=1 AND created_at >= ? GROUP BY d");
-        $st->execute([date('Y-m-d', time() - ($days - 1) * 86400)]);
-        foreach ($st->fetchAll() as $r) $out[$r['d']] = (int)$r['n'];
+        $days = max(1, min(366, $days));
+        $today = new DateTimeImmutable('today', new DateTimeZone(AppTime::zone()));
+        for ($i = $days - 1; $i >= 0; $i--) $out[$today->modify("-{$i} days")->format('Y-m-d')] = 0;
+        $st = $this->db->prepare("SELECT created_at FROM actions WHERE action='onu.authorize' AND ok=1 AND created_at >= ?");
+        $st->execute([AppTime::dayBoundary(array_key_first($out))]);
+        foreach ($st->fetchAll() as $r) {
+            $day = AppTime::format('Y-m-d', $r['created_at']);
+            if (array_key_exists($day, $out)) $out[$day]++;
+        }
         return $out;
     }
 
@@ -1691,6 +1912,12 @@ class OltManager
         $out = [];
         foreach ($st->fetchAll() as $u) {
             $issues = [];
+            if ($u['olt_vlan'] !== null && $u['vlan'] !== null && (int)$u['olt_vlan'] !== (int)$u['vlan']) {
+                $issues[] = 'VLAN on the OLT is ' . (int)$u['olt_vlan'] . ', saved VLAN is ' . (int)$u['vlan'];
+            }
+            if ($u['olt_gemport'] !== null && $u['gemport'] !== null && (int)$u['olt_gemport'] !== (int)$u['gemport']) {
+                $issues[] = 'GEM port on the OLT is ' . (int)$u['olt_gemport'] . ', saved GEM port is ' . (int)$u['gemport'];
+            }
             if ($u['service_ports'] !== null && (int)$u['service_ports'] === 0 && $u['status_group'] !== 'disabled') {
                 $issues[] = 'No service port on the OLT, so the ONU passes no internet';
             }
@@ -1857,10 +2084,10 @@ class OltManager
             $exact = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $d);
             if ($exact && $exact->format('Y-m-d H:i:s') === $d) {
                 $where[] = $col . ($k === 'to' ? ' <= ?' : ' >= ?');
-                $args[] = $d;
+                $args[] = AppTime::toStorage($d);
             } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && ($date = DateTimeImmutable::createFromFormat('!Y-m-d', $d)) && $date->format('Y-m-d') === $d) {
                 $where[] = "{$col} {$op} ?";
-                $args[] = $k === 'to' ? date('Y-m-d', strtotime($d . ' +1 day')) : $d;
+                $args[] = AppTime::dayBoundary($d, $k === 'to');
             }
         }
         return [$where, $args];

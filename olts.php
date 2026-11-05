@@ -44,7 +44,6 @@ $olts = $mgr->olts();
 $editing = isset($_GET['edit']) ? $mgr->olt((int)$_GET['edit']) : null;
 $showForm = $editing || isset($_GET['add']) || !$olts;
 $isVpn = ($editing['conn_type'] ?? 'vpn') === 'vpn';
-$models = ['MA5608T', 'MA5680T', 'MA5683T', 'MA5800-X2', 'MA5800-X7', 'MA5800-X15', 'MA5800-X17', 'EA5800-X2', 'EA5800-X7', 'EA5800-X15', 'EA5800-X17', 'EA5801-GP08', 'EA5801E-GP16'];
 
 // Filters on the list
 $fq = trim((string)($_GET['q'] ?? ''));
@@ -79,19 +78,17 @@ include __DIR__ . '/backend/templates/header.php';
     <div class="so-row conn-vpn"><label>Telnet TCP port</label><input class="so-input" name="lan_port" type="number" min="1" max="65535" value="<?php echo (int)($editing['lan_port'] ?? 23); ?>"></div>
     <div class="so-row conn-direct"><label>OLT IP or FQDN</label><input class="so-input" name="host" maxlength="190" placeholder="Public IP of the OLT or of your router" value="<?php echo e(($editing['conn_type'] ?? '') === 'direct' ? $editing['host'] : ''); ?>"></div>
     <div class="so-row conn-direct"><label>Telnet TCP port</label><input class="so-input" name="telnet_port" type="number" min="1" max="65535" value="<?php echo (int)(($editing['conn_type'] ?? '') === 'direct' ? $editing['telnet_port'] : 23); ?>"></div>
-    <div class="so-row"><label>Connection protocol</label><select class="so-select" disabled><option>Telnet</option></select></div>
+    <div class="so-row"><label>Connection protocol</label><div>Telnet</div></div>
     <div class="so-row"><label>OLT telnet username</label><input class="so-input" name="username" required maxlength="100" value="<?php echo e($editing['username'] ?? ''); ?>"></div>
     <div class="so-row"><label>OLT telnet password</label><input class="so-input" name="password" type="password" maxlength="100" autocomplete="new-password" <?php echo $editing ? 'placeholder="Leave blank to keep the saved one"' : 'required'; ?>></div>
-    <div class="so-row"><label>IPTV module</label><label class="so-check"><input type="checkbox" disabled> Enable <span class="so-muted">(not supported yet)</span></label></div>
+    <div class="so-row"><label>IPTV provisioning</label><div class="so-muted">Not supported by this driver. Existing multi-service ONUs are protected from single-service replacement.</div></div>
     <div class="so-row"><label>SNMP monitoring</label><div><input type="hidden" name="snmp_enabled" value="0"><label class="so-check"><input type="checkbox" name="snmp_enabled" value="1" <?php echo !empty($editing['snmp_enabled']) ? 'checked' : ''; ?>> Enable read-only SNMPv2c</label><div class="so-help">Reads system uptime and Ethernet interface counters. ONU provisioning and optical levels use Telnet.</div></div></div>
     <div class="so-row"><label>SNMP read-only community</label><input class="so-input" name="snmp_community" type="password" maxlength="255" autocomplete="new-password" placeholder="<?php echo !empty($editing['snmp_community_enc']) ? 'Leave blank to keep the saved community' : 'Community configured on the OLT'; ?>"></div>
     <div class="so-row"><label>SNMP UDP port</label><div><input class="so-input" name="snmp_port" type="number" min="1" max="65535" value="<?php echo (int)($editing['snmp_port'] ?? 161); ?>"><div class="so-help">For VPN connections, enter the OLT's LAN SNMP port and paste the updated MikroTik commands after saving. Direct connections need a reachable UDP port.</div></div></div>
-    <div class="so-row"><label>Manufacturer</label><select class="so-select" disabled><option>Huawei</option></select></div>
-    <div class="so-row"><label>OLT hardware version</label><select class="so-select" id="hw">
-        <?php foreach ($models as $m): ?><option <?php echo ($editing['model'] ?? 'MA5683T') === $m ? 'selected' : ''; ?>>Huawei-<?php echo $m; ?></option><?php endforeach; ?></select>
-        <div class="so-help">Read from the OLT itself after it connects.</div></div>
+    <div class="so-row"><label>Manufacturer</label><div>Huawei</div></div>
+    <div class="so-row"><label>OLT hardware version</label><div><?php echo !empty($editing['model']) ? e($editing['model']) : 'Not read yet'; ?><div class="so-help">Detected from the OLT after a successful read.</div></div></div>
     <div class="so-row"><label></label><div><?php echo olt_picture(16); ?></div></div>
-    <div class="so-row"><label>Supported PON types</label><div style="font-size:14px"><label class="so-check"><input type="radio" checked disabled> GPON</label></div></div>
+    <div class="so-row"><label>Supported PON types</label><div>GPON</div></div>
     <div class="so-row"><label></label><div class="so-inline" style="justify-content:space-between">
         <span><button class="so-btn so-btn-green"><i class="fa fa-floppy-o"></i> Save</button> <a href="olts.php" style="margin-left:10px">Cancel</a></span>
         <span class="so-muted" style="font-size:13px">Saving logs in to the OLT and reads it at once.</span></div></div>
@@ -119,7 +116,7 @@ include __DIR__ . '/backend/templates/header.php';
     <div><label class="so-label">Search</label><div class="so-search"><i class="fa fa-search"></i><input name="q" value="<?php echo e($fq); ?>" class="so-input" style="width:200px" placeholder="Name, IP, port, model"></div></div>
     <div><label class="so-label">Status</label><select name="status" class="so-select" style="width:150px" onchange="this.form.submit()"><option value="">Any</option><option value="online" <?php echo $fStatus === 'online' ? 'selected' : ''; ?>>Connected</option><option value="error" <?php echo $fStatus === 'error' ? 'selected' : ''; ?>>Not connected</option></select></div>
     <div><label class="so-label">VPN</label><select name="vpn" class="so-select" style="width:150px" onchange="this.form.submit()"><option value="">Any</option><option value="yes" <?php echo $fVpn === 'yes' ? 'selected' : ''; ?>>VPN</option><option value="no" <?php echo $fVpn === 'no' ? 'selected' : ''; ?>>Direct</option></select></div>
-    <div><label class="so-label">Vendor</label><select class="so-select" style="width:150px"><option>Any</option><option>Huawei</option></select></div>
+    <div><span class="so-label">Driver</span><span class="so-badge">Huawei GPON</span></div>
     <a href="olts.php" style="margin-left:auto;color:var(--text);font-weight:700;font-size:14px;padding-bottom:10px"><i class="fa fa-times"></i> Reset filters</a>
 </form>
 <?php if (!$list): ?><div class="so-empty">No OLTs found</div><?php else: ?>

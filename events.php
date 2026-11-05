@@ -34,7 +34,7 @@ include __DIR__ . '/backend/templates/header.php';
 <?php echo flash_messages(); ?>
 <form method="GET" class="so-box">
     <input type="hidden" name="tab" value="<?php echo e($f['tab']); ?>">
-    <div style="display:grid;grid-template-columns:2fr 2fr 1fr 1fr auto;gap:10px;align-items:end">
+    <div class="so-filter-grid">
         <div><label class="so-label">Search</label><input name="q" value="<?php echo e($f['q']); ?>" class="so-input" placeholder="OLT, source, rule, message"></div>
         <div><label class="so-label">OLT</label><select name="olt" class="so-select"><option value="">All OLTs</option><?php echo olt_options($mgr->olts(), $f['olt_id'] ?: ''); ?></select></div>
         <div><label class="so-label">From</label><input type="date" name="from" value="<?php echo e($f['from']); ?>" class="so-input"></div>
@@ -64,9 +64,9 @@ include __DIR__ . '/backend/templates/header.php';
         <?php foreach ($rows as $ev): $ongoing = $ev['resolved_at'] === null; ?>
             <tr>
                 <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:<?php echo $ev['severity'] === 'critical' ? 'var(--red)' : 'var(--orange)'; ?>"></span></td>
-                <td style="white-space:nowrap"><?php echo e(date('d-M-Y', strtotime($ev['started_at']))); ?><br><?php echo e(date('H:i:s', strtotime($ev['started_at']))); ?></td>
+                <td style="white-space:nowrap"><?php echo e(AppTime::format('d-M-Y', $ev['started_at'])); ?><br><?php echo e(AppTime::format('H:i:s', $ev['started_at'])); ?></td>
                 <td><?php echo e(OltManager::EVENT_TYPES[$ev['type']] ?? $ev['type']); ?></td>
-                <td style="white-space:nowrap"><?php echo $ongoing ? '' : e(date('d-M-Y H:i:s', strtotime($ev['resolved_at']))); ?></td>
+                <td style="white-space:nowrap"><?php echo $ongoing ? '' : e(AppTime::format('d-M-Y H:i:s', $ev['resolved_at'])); ?></td>
                 <td><?php if ($ongoing): ?><span style="color:var(--link)">&#9679; Ongoing</span><br><small class="so-muted">Down <?php echo e(str_replace(' ago', '', ago($ev['started_at']))); ?></small>
                     <?php else: ?><span style="color:var(--green)"><i class="fa fa-check"></i> Resolved</span><br><small class="so-muted">After <?php echo e(str_replace(' ago', '', ago(date('Y-m-d H:i:s', time() - (strtotime($ev['resolved_at']) - strtotime($ev['started_at'])))))); ?></small><?php endif; ?>
                     <?php if ($ev['muted']) echo '<br>' . badge('Muted', 'grey'); ?></td>
