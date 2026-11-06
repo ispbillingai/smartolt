@@ -4,22 +4,25 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/bin" "$WORK/var/www/html" "$WORK/etc/apache2/sites-available" "$WORK/etc/apache2/sites-enabled" "$WORK/root" "$WORK/etc/letsencrypt/live/smartolt.ispledger.com"
+mkdir -p "$WORK/bin" "$WORK/var/www/html" "$WORK/var/log" "$WORK/etc/apache2/sites-available" "$WORK/etc/apache2/sites-enabled" "$WORK/root" "$WORK/etc/letsencrypt/live/ispledger.click"
 printf '%s\n' 'test"secret$with\quotes' > "$WORK/root/smartolt_fleet_secret"
-touch "$WORK/etc/letsencrypt/live/smartolt.ispledger.com/fullchain.pem" "$WORK/etc/letsencrypt/live/smartolt.ispledger.com/privkey.pem"
-printf 'fixture\n' | tee "$WORK/etc/letsencrypt/live/smartolt.ispledger.com/fullchain.pem" > "$WORK/etc/letsencrypt/live/smartolt.ispledger.com/privkey.pem"
+touch "$WORK/etc/letsencrypt/live/ispledger.click/fullchain.pem" "$WORK/etc/letsencrypt/live/ispledger.click/privkey.pem"
+printf 'fixture\n' | tee "$WORK/etc/letsencrypt/live/ispledger.click/fullchain.pem" > "$WORK/etc/letsencrypt/live/ispledger.click/privkey.pem"
 sed -e 's/\[\[ "$EUID" -eq 0 \&\& "$#" -eq 1 \]\]/[ "$#" -eq 1 ]/' \
     -e "s|/var/www/html|$WORK/var/www/html|g" -e "s|/var/lib/smartolt-installs|$WORK/var/lib/smartolt-installs|g" \
     -e "s|/etc/apache2|$WORK/etc/apache2|g" -e "s|/etc/letsencrypt|$WORK/etc/letsencrypt|g" \
-    -e "s|/root/|$WORK/root/|g" "$ROOT/install.sh" > "$WORK/install.sh"
+    -e "s|/var/log/|$WORK/var/log/|g" -e "s|/root/|$WORK/root/|g" "$ROOT/install.sh" > "$WORK/install.sh"
 export INSTALL_TEST_ROOT="$ROOT" INSTALL_TEST_WORK="$WORK"
 cat > "$WORK/bin/git" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 [[ "$1" = clone ]]
-mkdir -p "$3/backend/config"
-cp "$INSTALL_TEST_ROOT/.htaccess" "$3/.htaccess"
-printf 'SELECT 1;\n' > "$3/install.sql"
+# The installer must clone the SmartOLT branch, not the repository's default branch.
+[[ " $* " = *" --branch olt-build-v1 "* ]] || { echo 'git clone without --branch olt-build-v1' >&2; exit 1; }
+dest="${!#}"
+mkdir -p "$dest/backend/config"
+cp "$INSTALL_TEST_ROOT/.htaccess" "$dest/.htaccess"
+printf 'SELECT 1;\n' > "$dest/install.sql"
 EOF
 cat > "$WORK/bin/mysql" <<'EOF'
 #!/usr/bin/env bash

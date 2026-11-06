@@ -13,7 +13,7 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 # Source, local test fixtures and repository metadata are never public downloads.
-RedirectMatch 404 "(?i)/(?:\.git|\.test-runtime|backend|tests|vpn)(?:/|$)"
+RedirectMatch 404 "(?i)/(?:\.git|\.test-runtime|backend|tests|vpn|provisioner)(?:/|$)"
 <FilesMatch "(?i)\.(sql|sh|md|log|ps1|awk)$">
     Require all denied
 </FilesMatch>

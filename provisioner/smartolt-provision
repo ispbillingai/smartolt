@@ -1,0 +1,12 @@
+#!/bin/bash
+# Installed as /usr/local/sbin/smartolt-provision by provisioner/setup.sh. www-data may run it as root
+# (sudoers), and only with one argument: the site subdomain. It builds that SmartOLT site with
+# /usr/local/lib/smartolt/install.sh in its own system job, outside PHP-FPM's read-only /etc, and
+# streams the installer output back. One build per subdomain at a time: a second request for the
+# same name fails while the first is running.
+set -euo pipefail
+sub="${1:-}"
+[[ "$#" -eq 1 && "$sub" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo "Invalid subdomain" >&2; exit 2; }
+exec systemd-run --quiet --wait --pipe --collect --unit="smartolt-install-$sub" \
+    --setenv=HOME=/root --property=RuntimeMaxSec=900 \
+    /bin/bash /usr/local/lib/smartolt/install.sh "$sub"

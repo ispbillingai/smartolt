@@ -49,6 +49,19 @@ $token = hash_hmac('sha256', $sub, $fleetSecret);
 $r = call('ping');
 check('the right token is accepted', $r['ok'] === true, $r);
 
+// Panel login, shown and changed from the billing dashboard
+$r = call('admin.info');
+check('panel login starts as admin with the default password', ($r['username'] ?? '') === 'admin' && ($r['default_password'] ?? null) === true, $r);
+$r = call('admin.password', ['new_password' => 'short']);
+check('a short panel password is refused', $r['_http'] === 400 && empty($r['ok']), $r);
+$r = call('admin.password', ['new_password' => 'Fibre-2026-panel']);
+check('panel password changed', $r['ok'] === true, $r);
+$r = call('admin.info');
+check('panel login no longer reports the default password', ($r['default_password'] ?? null) === false, $r);
+$r = call('actions.list');
+check('password change is in the action log without the password', in_array('admin.password', array_column($r['actions'] ?? [], 'action'), true)
+    && strpos(json_encode($r['actions'] ?? []), 'Fibre-2026-panel') === false, $r['actions'][0] ?? $r);
+
 // OLTs
 $r = call('olt.save', ['name' => 'Bad pass', 'host' => $oltHost, 'telnet_port' => (int)$oltPort, 'username' => 'root', 'password' => 'nope']);
 $badId = $r['id'] ?? 0;

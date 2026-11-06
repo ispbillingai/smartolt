@@ -64,7 +64,7 @@ if (isset($in['id']) && (!is_int($in['id']) && !(is_string($in['id']) && ctype_d
 
 // URL query strings are commonly logged. Tokens are accepted only in the header or JSON POST.
 // Read endpoints remain available by GET; any device/configuration mutation requires POST.
-$readActions = ['ping', 'olt.list', 'olt.get', 'olt.vpn', 'onu.list', 'onu.get', 'onu.unconfigured', 'stats', 'catalogs.list', 'actions.list', 'onu.history'];
+$readActions = ['ping', 'admin.info', 'olt.list', 'olt.get', 'olt.vpn', 'onu.list', 'onu.get', 'onu.unconfigured', 'stats', 'catalogs.list', 'actions.list', 'onu.history'];
 if ($method === 'GET' && !in_array((string)($in['action'] ?? ''), $readActions, true)) {
     header('Allow: POST');
     fail('This operation requires POST with a JSON body.', 405);
@@ -74,6 +74,21 @@ $id = (int)($in['id'] ?? 0);
 try {
     switch ((string)($in['action'] ?? '')) {
         case 'ping':
+            out(['ok' => true]);
+
+        // The billing dashboard shows the panel login and can set its password, like the Hotspot AP site.
+        case 'admin.info':
+            $admin = $mgr->db()->query('SELECT username, password FROM users WHERE id=1')->fetch();
+            if (!$admin) fail('This SmartOLT site has no administrator account.', 404);
+            out(['ok' => true, 'username' => $admin['username'], 'default_password' => password_verify('admin', (string)$admin['password'])]);
+
+        case 'admin.password':
+            $new = (string)($in['new_password'] ?? '');
+            if (strlen($new) < 8 || strlen($new) > 200) fail('The password must be 8 to 200 characters long.', 400);
+            $st = $mgr->db()->prepare('UPDATE users SET password=? WHERE id=1');
+            $st->execute([password_hash($new, PASSWORD_DEFAULT)]);
+            if (!$st->rowCount()) fail('This SmartOLT site has no administrator account.', 404);
+            $mgr->log(null, 'admin.password', 'admin', true, 'Panel password changed from the billing dashboard');
             out(['ok' => true]);
 
         case 'olt.list':

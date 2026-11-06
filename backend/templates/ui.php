@@ -54,7 +54,7 @@ function status_label(string $group): string
 }
 
 const ACTION_LABELS = [
-    'olt.backup' => 'Back up OLT configuration', 'olt.backup_download' => 'Download OLT backup', 'olt.backup_delete' => 'Delete OLT backup',
+    'admin.password' => 'Change panel password', 'olt.backup' => 'Back up OLT configuration', 'olt.backup_download' => 'Download OLT backup', 'olt.backup_delete' => 'Delete OLT backup',
     'onu.authorize' => 'Authorize ONU', 'onu.reboot' => 'Reboot ONU', 'onu.delete' => 'Delete ONU', 'onu.describe' => 'Rename ONU',
     'onu.status' => 'Read ONU', 'onu.autofind' => 'Search for ONUs', 'onu.config' => 'Show running config',
     'onu.service' => 'Change VLAN or speed', 'onu.enable' => 'Enable ONU', 'onu.disable' => 'Disable ONU', 'onu.replace_sn' => 'Replace ONU',
@@ -68,7 +68,7 @@ function action_text(array $a): string
 {
     $done = ['onu.authorize' => 'authorized', 'onu.reboot' => 'rebooted', 'onu.delete' => 'deleted', 'onu.describe' => 'renamed',
         'onu.service' => 'service changed', 'onu.enable' => 'enabled', 'onu.disable' => 'disabled', 'onu.replace_sn' => 'replaced',
-        'olt.refresh' => 'read', 'olt.save' => 'configuration saved', 'olt.delete' => 'removed', 'onu.status' => 'read live'][$a['action']] ?? (ACTION_LABELS[$a['action']] ?? $a['action']);
+        'olt.refresh' => 'read', 'olt.save' => 'configuration saved', 'olt.delete' => 'removed', 'onu.status' => 'read live', 'admin.password' => 'password changed'][$a['action']] ?? (ACTION_LABELS[$a['action']] ?? $a['action']);
     $who = $a['source'] === 'auto' ? ' by auto action' : ($a['source'] === 'api' ? ' from the billing dashboard' : ($a['source'] === 'cron' ? '' : ($a['user'] !== '' ? ' by ' . $a['user'] : '')));
     return trim($a['target'] . ' ' . $done) . $who . ($a['ok'] ? '' : ' failed: ' . $a['message']);
 }

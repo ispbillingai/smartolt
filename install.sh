@@ -7,15 +7,17 @@ SUBDOMAIN="$1"
 [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Invalid DNS subdomain (1-63 lowercase letters, numbers, interior hyphens).' >&2; exit 2; }
 case "$SUBDOMAIN" in mysql|sys|root|smartolt) echo 'This subdomain is reserved.' >&2; exit 2 ;; esac
 GIT_REPO=git@github.com:ispbillingai/smartolt.git
-DOMAIN=smartolt.ispledger.com
+# The SmartOLT panel lives on this branch until it is merged into main.
+GIT_BRANCH="${SMARTOLT_GIT_BRANCH:-olt-build-v1}"
+DOMAIN=ispledger.click
 WEB_ROOT=/var/www/html
 SITE_DIR="$WEB_ROOT/$SUBDOMAIN"
 CONF_FILE="/etc/apache2/sites-available/$SUBDOMAIN.conf"
-LOG_FILE=/root/install.log
+LOG_FILE=/var/log/smartolt-install.log
 FLEET_SECRET_FILE=/root/smartolt_fleet_secret
 log() { printf '%s - %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"; }
 die() { log "$*"; echo "$*" >&2; exit 1; }
-trap 'echo "Installation did not complete. Existing data was preserved; inspect /root/install.log and the reported staging directory." >&2' ERR
+trap 'echo "Installation did not complete. Existing data was preserved; inspect /var/log/smartolt-install.log and the reported staging directory." >&2' ERR
 
 # Do not report a partially copied folder as a completed installation.
 if [ -e "$SITE_DIR" ] || [ -L "$SITE_DIR" ]; then
@@ -66,9 +68,9 @@ APP_URL="https://$SUBDOMAIN.$DOMAIN"
 mkdir -p /var/lib/smartolt-installs "$WEB_ROOT"
 chmod 700 /var/lib/smartolt-installs
 STAGE=$(mktemp -d "/var/lib/smartolt-installs/$SUBDOMAIN.XXXXXX")
-log "Installing $SUBDOMAIN from $GIT_REPO; private staging: $STAGE"
+log "Installing $SUBDOMAIN from $GIT_REPO ($GIT_BRANCH); private staging: $STAGE"
 echo "Preparing installation in $STAGE"
-git clone "$GIT_REPO" "$STAGE/site"
+git clone --branch "$GIT_BRANCH" --single-branch "$GIT_REPO" "$STAGE/site"
 if [ -n "$FPM_SOCKET" ]; then
     sed -i "s|/run/php/php8.4-fpm.sock|$FPM_SOCKET|g" "$STAGE/site/.htaccess"
 else
@@ -114,7 +116,7 @@ cat > "$CONF_FILE" <<EOF
         AllowOverride All
         Require all granted
     </Directory>
-    <LocationMatch "(?i)^/(backend|tests|vpn|\\.git|\\.test-runtime)(/|$)|\\.(sql|sh|md|log|ps1|awk)$">
+    <LocationMatch "(?i)^/(backend|tests|vpn|provisioner|\\.git|\\.test-runtime)(/|$)|\\.(sql|sh|md|log|ps1|awk)$">
         Require all denied
     </LocationMatch>
     SSLEngine on
